@@ -1,0 +1,37 @@
+node_modules/
+dist/
+dist-ssr/
+*.local
+.DS_Store
+*.log
+npm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Vite / Vitest
+.vite/
+coverage/
+
+# --- Android signing: NEVER commit these ---
+# Losing the upload keystore means you can never update the Play listing again.
+# Back it up somewhere outside this repo (password manager / encrypted storage).
+*.keystore
+*.jks
+keystore.properties
+key.properties
+
+# Android build output
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/release/
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor-cordova-android-plugins/
+*.aab
+*.apk
