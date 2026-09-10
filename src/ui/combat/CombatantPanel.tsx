@@ -40,7 +40,10 @@ export function CombatantPanel({ combatant, targetable, onSelect, compact = fals
       className={classes}
       disabled={!targetable}
       onClick={() => onSelect(combatant.id)}
-      aria-label={`${combatant.name}, ${combatant.health} of ${combatant.maxHealth} health`}
+      aria-label={
+        `${combatant.name}, ${combatant.health} of ${combatant.maxHealth} health` +
+        (combatant.shield > 0 ? `, ${combatant.shield} shield` : '')
+      }
     >
       <FloatingNumbers combatantId={combatant.id} />
 
@@ -48,10 +51,15 @@ export function CombatantPanel({ combatant, targetable, onSelect, compact = fals
         <span className="unit__name">{combatant.name}</span>
         <span className="unit__hp">
           {combatant.health}/{combatant.maxHealth}
+          {combatant.shield > 0 && <span className="unit__shield">+{combatant.shield}</span>}
         </span>
       </span>
 
-      <HealthBar current={combatant.health} max={combatant.maxHealth} />
+      <HealthBar
+        current={combatant.health}
+        max={combatant.maxHealth}
+        shield={combatant.shield}
+      />
 
       <span className="bar bar--stamina">
         <span className="bar__fill" style={{ width: `${staminaPct}%` }} />

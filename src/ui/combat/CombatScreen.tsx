@@ -6,6 +6,7 @@ import { getCombatActions, useCombatStore } from '@/state/useCombatStore';
 import type { CombatState } from '@/game/combat/types';
 import { CardView } from './CardView';
 import { CombatantPanel } from './CombatantPanel';
+import { SelectionStrip } from './SelectionStrip';
 
 /**
  * The whole combat interface, drawn over the ArenaScene canvas.
@@ -22,6 +23,7 @@ export function CombatScreen() {
       <EnemyRow battle={battle} />
       <PartyRow battle={battle} />
       <BottomBar battle={battle} />
+      <SelectionStrip />
       <Banner battle={battle} />
     </div>
   );

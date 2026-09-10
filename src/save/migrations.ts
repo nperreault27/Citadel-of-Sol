@@ -1,3 +1,4 @@
+import { DEFAULT_PARTY } from '@/game/combat/content';
 import { CURRENT_SAVE_VERSION } from './schema';
 
 /**
@@ -13,14 +14,17 @@ export type Migration = (data: Record<string, unknown>) => Record<string, unknow
 /**
  * Keyed by the version being migrated *from*.
  *
- * The game is at version 1, so this is empty. When the save shape changes:
- *   1. Bump CURRENT_SAVE_VERSION in schema.ts to 2
- *   2. Add `1: (data) => ({ ...data, version: 2, newField: defaultValue })`
+ * When the save shape changes:
+ *   1. Bump CURRENT_SAVE_VERSION in schema.ts
+ *   2. Add an entry here keyed by the version being migrated away from
  *
  * Never edit an existing migration once a build carrying it has shipped — some
  * player out there has a save that depends on it behaving exactly as it did.
  */
-export const migrations: Record<number, Migration> = {};
+export const migrations: Record<number, Migration> = {
+  /** v2 added the equipped party. Saves from v1 get the starting three. */
+  1: (data) => ({ ...data, party: [...DEFAULT_PARTY] }),
+};
 
 /**
  * Runs a save forward through every migration between its version and the

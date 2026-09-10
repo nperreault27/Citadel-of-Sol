@@ -41,10 +41,16 @@ export const COMBATANT_FRAMES: Record<string, number> = {
   ivy: 0,
   saber: 1,
   cask: 2,
-  ogre: 3,
-  imp1: 4,
+  lyra: 3,
+  bruno: 4,
+  hollis: 5,
+  emrys: 6,
+  vesper: 7,
+  thane: 8,
+  ogre: 9,
+  imp1: 10,
   // Both imps share a frame; only their ids differ.
-  imp2: 4,
+  imp2: 10,
 };
 
 /** Frame dimensions of the player spritesheet, one frame per facing. */

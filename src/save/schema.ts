@@ -1,10 +1,11 @@
 import { z } from 'zod';
+import { DEFAULT_PARTY } from '@/game/combat/content';
 
 /**
  * Bump this whenever the save shape changes, and add a matching entry to
  * `migrations.ts`. See that file for the contract.
  */
-export const CURRENT_SAVE_VERSION = 1;
+export const CURRENT_SAVE_VERSION = 2;
 
 export const saveDataSchema = z.object({
   version: z.number().int().positive(),
@@ -18,6 +19,9 @@ export const saveDataSchema = z.object({
     health: z.number().int().nonnegative(),
     maxHealth: z.number().int().positive(),
   }),
+
+  /** Ids of the equipped party, in display order. */
+  party: z.array(z.string().min(1)),
 
   world: z.object({
     mapKey: z.string().min(1),
@@ -47,6 +51,7 @@ export function createNewSave(): SaveData {
       health: 10,
       maxHealth: 10,
     },
+    party: [...DEFAULT_PARTY],
     world: {
       mapKey: 'overworld',
       visitedFlags: [],

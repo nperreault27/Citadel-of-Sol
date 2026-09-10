@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useGameStore } from '@/state/useGameStore';
 import { useCombatStore } from '@/state/useCombatStore';
 import { HUD } from './HUD';
@@ -7,6 +8,7 @@ import { LoadingScreen } from './LoadingScreen';
 import { PauseMenu } from './PauseMenu';
 import { SaveResetNotice } from './SaveResetNotice';
 import { CombatScreen } from './combat/CombatScreen';
+import { RosterScreen } from './combat/RosterScreen';
 
 /**
  * Everything drawn on top of the canvas.
@@ -23,6 +25,10 @@ export function UIOverlay() {
   const phase = useGameStore((s) => s.phase);
   const inBattle = useCombatStore((s) => s.battle !== null);
 
+  // Local, not in a store: nothing outside this component cares whether the
+  // party sheet happens to be open.
+  const [rosterOpen, setRosterOpen] = useState(false);
+
   const isPlaying = phase === 'playing';
 
   return (
@@ -35,8 +41,9 @@ export function UIOverlay() {
       ) : (
         isPlaying && (
           <>
-            <HUD />
+            <HUD onOpenRoster={() => setRosterOpen(true)} />
             <ActionButton />
+            {rosterOpen && <RosterScreen onClose={() => setRosterOpen(false)} />}
           </>
         )
       )}

@@ -156,13 +156,24 @@ was a poison tick, or whether Bleed doubled it.
 
 All of it collapses to near-instant under `prefers-reduced-motion`.
 
-### The party and their traits
+### The roster
 
 | | Trait | Basic (1) | Special (2) | Unique |
 | --- | --- | --- | --- | --- |
 | **Ivy** — The Chemist | Poison | Inject — damage + 1 Poison | Disperse — 2 Poison to all enemies | Cascade (2) — 1 Poison to all enemies, then every Poison lasts 1 turn longer |
 | **Saber** — The Assassin | Bleed | Sever — damage + 1 Bleed | Crossfade — AoE damage + 1 Bleed each | Exsanguinate (3) — discard your hand, one strike per card discarded |
 | **Cask** — The Blunderbuss | Stamina drain | Buckshot — damage + 40 stamina drain | Overdraw (1) — scales with missing stamina, refunds energy if it empties | Winded (3) — empty a target's stamina outright |
+| **Lyra** — The Bard | Fatigue | Refrain (0) — 1 Strength to an ally | Dirge (1) — 1 Fatigue to an enemy | Requiem (2) — 1 Fatigue to all enemies, or 3 if only one remains |
+| **Bruno** — The Fighter | Raw damage | Jab — 55 power | Hook — 137 power (2.5x) | Haymaker (3) — 275 power (5x), costs his whole stamina bar |
+| **Hollis** — The Anvil | Defence | Strike — 45 power | Goad (1) — Taunt +1 · Rebound (1) — Counter x3 | Ironclad (3) — take no damage until your next turn |
+| **Emrys** — The Mage | Chain damage | Bolt — 55 power | Arc (2) — 30 power, 80% to keep arcing · Reserve (1) — restore 40 stamina | — |
+| **Vesper** — The Vampire | Health as a resource | Bloodlet — pay 15% max HP for 85 power · Siphon — 60 power, heal half | Undying (2) — when an enemy falls, heal 50% or rise | — |
+| **Thane** — The Shielder | Shields | Ward — shield an ally for 25% of *his* max HP | Cover (2) — split 45% of his max HP across the team · Brace (0) — Defense Up | — |
+
+**Five characters, three equipped.** The roster screen picks the party, and `buildDeck()`
+assembles the draw pile from whoever is equipped plus the neutral cards — bench Lyra and her
+cards leave the pile entirely. That is what the owner tag on every card was for. The choice
+lives in `gameStore` and is persisted, so it survives a force-quit.
 
 **Poison** deals 5% of the victim's max health per stack at the end of their team's turn, and
 **ignores Defense entirely** — which is what makes Ivy the answer to high-Defense targets the
@@ -178,6 +189,64 @@ therefore lands at 3 turns rather than 2. Ivy's payoff is more ticks, not one bu
 deals **double its final damage** — after Attack and Defense, so mitigation is applied first.
 An area attack eats one stack from *each* bleeding target it hits. Note that a card which both
 hits and applies Bleed does not double its own hit; the stack lands after.
+
+**Shields** are a resource on the combatant, not a status: a `shield` pool that sits between
+incoming damage and health. They are sized from the *caster's* max health, so Thane's bulk is
+literally what he hands out — the same 60 whether it lands on Emrys or on Hollis.
+
+Shields refresh rather than stack (the larger wins), persist until something breaks them, and
+let the overflow through: a 40 shield hit for 100 absorbs 40 and 60 reaches health. Two
+consequences worth knowing:
+
+- **They protect stamina too.** Absorbed damage never reaches you, so it never tires you.
+  Only the overflow drains stamina.
+- **Poison ignores them entirely.** Damage over time eats health directly however much
+  protection is stacked up, which makes Ivy the hard counter to Thane.
+
+**Defense Up** compounds like Strength (×1.3 per stack, permanent). Note the mitigation curve
+already has diminishing returns, so a stack is worth much less than the raw multiplier
+suggests: DEF 50 → 65 is about 19% less damage taken, not 30%.
+
+**Chain damage** (Arc) hits the chosen target, then keeps arcing while an 80% roll holds.
+Nothing else bounds it: each jump picks any living enemy, the one just struck included, so a
+lone target is a perfectly good place to cast it. The `maxHits` field is a safety valve
+against a pathological loop, not a design cap — at 80% the odds of reaching 50 hits are about
+1 in 70,000.
+
+**Lifesteal** returns a fraction of the damage actually dealt, so mitigation cuts the healing
+as well as the hit, and a blocked attack heals nothing.
+
+**Health as a cost** (`healthCostFraction`) is a cost, not damage: it drains no stamina,
+spends no Bleed, provokes no counter, and can never be lethal — it stops at 1 health.
+
+**Undying** pays out when an enemy falls: heal 50% max health, or rise at 50% if you were
+already down. One stack covers both, so the card is never dead weight. The one gap it cannot
+cover is being the last ally standing — the battle is decided the moment you drop, leaving no
+enemy to feed on. There is a test pinning that as a known limitation.
+
+**Taunt** forces single-target *attacks* onto the taunter — debuffs still pick their own
+target, since a curse is not a blow. Area attacks bypass it entirely, which is the
+counterplay. One stack is one turn, and a stack falls off each end of turn, so the stack
+count is the countdown (and is shown in the badge's turn corner rather than twice).
+
+**Counter Attack** fires the defender's basic back at whoever hit them, spends a stack, and
+costs no stamina. It triggers on any attack that reaches them — area attacks included, and
+blocked attacks too — but **never chains**: a counter cannot provoke a counter. Without that
+guard two characters holding stacks would volley until one ran out, or forever if either
+could regain one.
+
+**Immunity** blocks all damage to health and stamina, poison ticks included. Debuffs still
+land, attacks still trigger counters, and blocked attacks still spend a Bleed stack — being
+immune stops you being hurt, not the fact that a blow landed. Direct stamina drains are not
+damage, so Cask still works on an immune target. It expires at the *start* of the bearer's
+next turn rather than on a countdown, because a plain 1-turn timer would tick away at the end
+of the turn it was played and never protect anything.
+
+**Fatigue** multiplies *every* stamina loss by 1.2 per stack, compounding — damage drain, the
+cost of playing a card, and direct drains alike. Every stamina path in the game funnels
+through one function, which is why it is applied in a single place rather than at each call
+site. It has no timer: the only thing that clears it is the bearer being worn down to zero
+and recovering, which is what makes it worth stacking.
 
 **Stamina drain** is Cask stealing turns rather than dealing damage. Draining an enemy to zero
 during your turn benches them for the whole of theirs, because the rest flag is only cleared
@@ -197,6 +266,7 @@ net        = strength stacks − weakness stacks
 drain      = min(50%, 50% × (damage / maxHP ÷ 25%)²) of max stamina
 poison     = 5% × stacks of maxHP, ignoring Defense
 overdraw   = power + bonus × (missing stamina fraction)²
+fatigue    = stamina loss × 1.2 ^ stacks
 ```
 
 Card power is a **percentage of the attacker's Attack** — power 60 lands at 60% of their
@@ -217,15 +287,18 @@ makes high-health characters stagger less from the same absolute damage.
 npm run balance
 ```
 
-Plays 200 seeded battles with a greedy AI and reports win rate, length and survivors. Run
-it after changing a stat or a card. The AI plays the first affordable card at the first
-legal target, so its win rate is a **ceiling on how easy** the fight is — 99% means trivial,
-but the AI losing does not prove the fight is hard.
+Plays 200 seeded battles for **every party of three** and reports win rate, length and
+survivors per party. Run it after changing a stat or a card.
 
-> Current content sits at a **95.5% win rate over a median 5 rounds, 2.64 of 3 surviving**.
-> That is a tuning question, not a bug: the numbers in `content.ts` exist to make the loop
-> playable, not balanced. The enemy group is the obvious lever — one ogre and two imps is a
-> thin test of three characters built around long-game attrition.
+The AI plays the first affordable card at the first legal target, so its win rate is a
+**ceiling on how easy** the fight is — 99% means trivial, but the AI losing does not prove
+the fight is hard. It also systematically undervalues setup mechanics: a greedy
+player gets little from Fatigue, Taunt or Poison and everything from raw damage, so the
+damage-forward characters always test better than they play.
+
+> **Power numbers, stats and win rates are placeholder** while the roster is still being
+> built out. The probe exists so tuning is measurable when the time comes, not so the current
+> numbers mean anything.
 
 ## Saves
 

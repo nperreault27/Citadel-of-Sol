@@ -6,6 +6,12 @@ const LABELS: Record<StatusEntry['kind'], string> = {
   bleed: 'Bleed',
   strength: 'Strength',
   weakness: 'Weakness',
+  fatigue: 'Fatigue',
+  taunt: 'Taunt',
+  counter: 'Counter Attack',
+  immunity: 'Immunity',
+  undying: 'Undying',
+  defenseUp: 'Defense Up',
 };
 
 /**
@@ -20,11 +26,22 @@ const LABELS: Record<StatusEntry['kind'], string> = {
  * Strength, Weakness and Bleed have no clock, so showing one would be a lie.
  */
 export function StatusBadge({ entry }: { entry: StatusEntry }) {
-  const turns = entry.duration.kind === 'turns' ? entry.duration.remaining : null;
+  // Taunt counts down in stacks, so its stack count *is* the turn counter and
+  // belongs in the turns corner. Showing the same number twice would be noise.
+  const stacksAreTurns = entry.duration.kind === 'perTurnStack';
+
+  const turns =
+    entry.duration.kind === 'turns'
+      ? entry.duration.remaining
+      : stacksAreTurns
+        ? entry.stacks
+        : null;
 
   const label =
-    `${LABELS[entry.kind]}, ${entry.stacks} ${entry.stacks === 1 ? 'stack' : 'stacks'}` +
-    (turns === null ? '' : `, ${turns} ${turns === 1 ? 'turn' : 'turns'} remaining`);
+    turns !== null && stacksAreTurns
+      ? `${LABELS[entry.kind]}, ${turns} ${turns === 1 ? 'turn' : 'turns'} remaining`
+      : `${LABELS[entry.kind]}, ${entry.stacks} ${entry.stacks === 1 ? 'stack' : 'stacks'}` +
+        (turns === null ? '' : `, ${turns} ${turns === 1 ? 'turn' : 'turns'} remaining`);
 
   return (
     <span className={`status status--${entry.kind}`} title={label} aria-label={label} role="img">
@@ -33,7 +50,7 @@ export function StatusBadge({ entry }: { entry: StatusEntry }) {
       </span>
 
       {turns !== null && <span className="status__turns">{turns}</span>}
-      <span className="status__stacks">{entry.stacks}</span>
+      {!stacksAreTurns && <span className="status__stacks">{entry.stacks}</span>}
     </span>
   );
 }

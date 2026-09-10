@@ -5,9 +5,11 @@ import {
   chooseTarget,
   confirmDiscard,
   endPlayerTurn,
+  resolveSelection,
   selectCard,
   stepEnemyTurn,
 } from '@/game/combat/engine';
+import { gameStore } from './store';
 import type { CardInstanceId, CombatState, CombatantId } from '@/game/combat/types';
 
 /**
@@ -34,6 +36,8 @@ export interface CombatStoreState {
   discardSelection: CardInstanceId[];
 
   startBattle: (seed?: number) => void;
+  /** Finishes a card that is waiting on the player to pick a card. */
+  chooseCard: (instanceId: CardInstanceId) => void;
   endBattle: () => void;
 
   playCard: (instanceId: CardInstanceId) => void;
@@ -97,9 +101,20 @@ export const combatStore = createStore<CombatStoreState>()((set, get) => {
 
     startBattle: (seed) => {
       cancelEnemyTurn();
-      const battle = seed === undefined ? createArenaBattle() : createArenaBattle(seed);
+      // The party comes from durable game state, so the deck is built from
+      // whoever is currently equipped.
+      const party = gameStore.getState().party;
+      const battle =
+        seed === undefined ? createArenaBattle(party) : createArenaBattle(party, seed);
+
       set({ battle, discardSelection: [] });
       if (battle.phase === 'enemyTurn') scheduleEnemyStep(ENEMY_TURN_LEAD_IN_MS);
+    },
+
+    chooseCard: (instanceId) => {
+      const { battle } = get();
+      if (!battle) return;
+      set({ battle: resolveSelection(battle, instanceId) });
     },
 
     endBattle: () => {
@@ -154,6 +169,11 @@ export function discardsRequired(state: CombatStoreState): number {
   const battle = state.battle;
   if (!battle || battle.phase !== 'discarding') return 0;
   return Math.max(0, battle.hand.length - battle.handLimit);
+}
+
+/** The choice a card is waiting on, if any. */
+export function pendingSelection(state: CombatStoreState) {
+  return state.battle?.phase === 'selecting' ? (state.battle.selection ?? null) : null;
 }
 
 /** True while the enemy team is mid-turn, so the UI can lock input. */

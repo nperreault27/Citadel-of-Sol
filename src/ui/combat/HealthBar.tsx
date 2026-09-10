@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 interface Props {
   current: number;
   max: number;
+  /** Damage absorbed before health is touched. */
+  shield?: number;
 }
 
 /** How long the drained sliver lingers before it catches up. */
@@ -19,9 +21,15 @@ const GHOST_HOLD_MS = 260;
  * Both layers are absolutely positioned in the same box rather than stacked, so
  * the ghost is only ever visible where the front fill has already retreated.
  */
-export function HealthBar({ current, max }: Props) {
+export function HealthBar({ current, max, shield = 0 }: Props) {
   const safeMax = Math.max(1, max);
   const pct = Math.max(0, Math.min(100, (current / safeMax) * 100));
+
+  // The shield rides on top of the health fill and is measured against the same
+  // max, so a shield worth half your health looks like half a bar. It is capped
+  // at the remaining space rather than overflowing the track, because a shield
+  // sized from someone *else's* health can easily exceed your own.
+  const shieldPct = Math.max(0, Math.min(100 - pct, (shield / safeMax) * 100));
 
   const [ghostPct, setGhostPct] = useState(pct);
   const previous = useRef(current);
@@ -46,6 +54,9 @@ export function HealthBar({ current, max }: Props) {
     <span className="bar bar--health">
       <span className="bar__ghost" style={{ width: `${ghostPct}%` }} />
       <span className="bar__fill" style={{ width: `${pct}%` }} />
+      {shield > 0 && (
+        <span className="bar__shield" style={{ left: `${pct}%`, width: `${shieldPct}%` }} />
+      )}
     </span>
   );
 }

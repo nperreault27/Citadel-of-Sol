@@ -1,11 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { COMBAT_CONTENT, createArenaBattle, PARTY, ENEMIES } from '@/game/combat/content';
+import {
+  COMBAT_CONTENT,
+  DEFAULT_PARTY,
+  ENEMIES,
+  ROSTER,
+  characterById,
+  createArenaBattle,
+} from '@/game/combat/content';
 import {
   canPlayCard,
   cardDefOf,
   chooseTarget,
   confirmDiscard,
   endPlayerTurn,
+  resolveSelection,
   resolveEnemyTurn,
   legalTargets,
   selectCard,
@@ -27,6 +35,15 @@ function playOut(state: CombatState, maxRounds = 200): CombatState {
 
   for (let i = 0; i < maxRounds; i++) {
     if (current.phase === 'victory' || current.phase === 'defeat') break;
+
+    // Cards that ask the player to pick one park the battle here. A simulation
+    // has no preference, so it takes the first option.
+    if (current.phase === 'selecting') {
+      const choice = current.selection?.cards[0];
+      if (!choice) break;
+      current = resolveSelection(current, choice);
+      continue;
+    }
 
     // The enemy turn is stepped for the UI's benefit; simulations resolve it
     // in one go.
@@ -77,7 +94,7 @@ function playOut(state: CombatState, maxRounds = 200): CombatState {
 
 describe('a full battle', () => {
   it('reaches a conclusion rather than stalling', () => {
-    const result = playOut(createArenaBattle(1));
+    const result = playOut(createArenaBattle(DEFAULT_PARTY, 1));
     expect(['victory', 'defeat']).toContain(result.phase);
   });
 
@@ -85,7 +102,7 @@ describe('a full battle', () => {
     // A deadlock that only appears on certain shuffles is exactly the kind of
     // bug that ships. Sweeping seeds is cheap insurance.
     for (let seed = 1; seed <= 25; seed++) {
-      const result = playOut(createArenaBattle(seed));
+      const result = playOut(createArenaBattle(DEFAULT_PARTY, seed));
       expect(['victory', 'defeat'], `seed ${seed} stalled in ${result.phase}`).toContain(
         result.phase
       );
@@ -93,7 +110,7 @@ describe('a full battle', () => {
   });
 
   it('never leaves the hand over the limit once a turn has ended', () => {
-    let current = createArenaBattle(7);
+    let current = createArenaBattle(DEFAULT_PARTY, 7);
 
     for (let turn = 0; turn < 12; turn++) {
       if (current.phase === 'victory' || current.phase === 'defeat') break;
@@ -112,7 +129,7 @@ describe('a full battle', () => {
   });
 
   it('conserves every card across the piles', () => {
-    const start = createArenaBattle(3);
+    const start = createArenaBattle(DEFAULT_PARTY, 3);
     const total = start.drawPile.length + start.hand.length + start.discardPile.length;
 
     const end = playOut(start, 40);
@@ -123,12 +140,15 @@ describe('a full battle', () => {
     expect(total).toBe(Object.keys(start.cards).length);
   });
 
-  it('starts the player first, given the party out-speeds the enemies', () => {
-    const partySpeed = PARTY.reduce((sum, c) => sum + c.speed, 0);
+  it('starts the player first, given the default party out-speeds the enemies', () => {
+    const partySpeed = DEFAULT_PARTY.map(characterById).reduce(
+      (sum, c) => sum + (c?.speed ?? 0),
+      0
+    );
     const enemySpeed = ENEMIES.reduce((sum, c) => sum + c.speed, 0);
 
     expect(partySpeed).toBeGreaterThan(enemySpeed);
-    expect(createArenaBattle(1).activeTeam).toBe('player');
+    expect(createArenaBattle(DEFAULT_PARTY, 1).activeTeam).toBe('player');
   });
 
   it('gives every enemy at least one defined action', () => {
@@ -140,7 +160,7 @@ describe('a full battle', () => {
   });
 
   it('references only real owners from every card', () => {
-    const ids = new Set([...PARTY, ...ENEMIES].map((c) => c.id));
+    const ids = new Set([...ROSTER, ...ENEMIES].map((c) => c.id));
 
     for (const card of Object.values(COMBAT_CONTENT.cardDefs)) {
       if (card.ownerId === null) continue;

@@ -29,6 +29,7 @@ function combatant(statuses: StatusEntry[]): Combatant {
     defense: 0,
     speed: 10,
     statuses,
+    shield: 0,
     downed: false,
     resting: false,
   };

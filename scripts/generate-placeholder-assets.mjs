@@ -195,19 +195,25 @@ const COMBATANT_H = 56;
 
 /**
  * One frame per combatant, in the order COMBATANT_FRAMES expects:
- * Ivy, Saber, Cask, Ogre, Imp.
+ * Ivy, Saber, Cask, Lyra, Bruno, Hollis, Emrys, Vesper, Thane, Ogre, Imp.
  *
  * Silhouettes differ in bulk and height as well as colour, so the party reads
  * apart at a glance on a phone screen rather than relying on hue alone.
  */
 function buildCombatantSheet() {
-  const canvas = createCanvas(COMBATANT_W * 5, COMBATANT_H);
+  const canvas = createCanvas(COMBATANT_W * 11, COMBATANT_H);
 
   const figures = [
     // [body, trim, skin, width, height] — width/height in pixels of the torso block
     [[96, 148, 104], [150, 196, 140], [236, 212, 180], 18, 24], // Ivy, slight chemist
     [[186, 66, 74], [230, 120, 110], [235, 197, 162], 20, 26], // Saber, lean assassin
     [[74, 104, 156], [126, 158, 200], [226, 190, 158], 30, 26], // Cask, broad gunner
+    [[150, 122, 176], [190, 166, 214], [238, 214, 196], 18, 25], // Lyra, poised bard
+    [[186, 138, 62], [222, 178, 96], [228, 186, 150], 32, 28], // Bruno, heavy bruiser
+    [[110, 116, 128], [156, 162, 176], [220, 200, 180], 34, 30], // Hollis, slab of a man
+    [[72, 96, 168], [124, 152, 216], [232, 214, 190], 18, 26], // Emrys, robed mage
+    [[124, 40, 60], [186, 74, 96], [226, 210, 214], 20, 26], // Vesper, pale vampire
+    [[86, 132, 148], [130, 180, 196], [224, 206, 186], 32, 28], // Thane, shield-bearer
     [[104, 122, 78], [138, 156, 104], [128, 140, 92], 34, 34], // Ogre, hulking
     [[128, 92, 156], [172, 132, 200], [186, 150, 210], 16, 18], // Imp, tiny
   ];

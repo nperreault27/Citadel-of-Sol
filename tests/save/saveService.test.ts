@@ -90,6 +90,42 @@ describe('SaveService.load', () => {
   });
 });
 
+describe('migrating a v1 save', () => {
+  it('upgrades a real v1 save and keeps its progress', () => {
+    // v1 had no `party`. A player mid-game must not lose their world state just
+    // because the schema grew.
+    const v1 = JSON.stringify({
+      version: 1,
+      savedAt: 1,
+      player: { x: 320, y: 480, facing: 'left', health: 7, maxHealth: 10 },
+      world: { mapKey: 'overworld', visitedFlags: ['signpost'] },
+      inventory: [{ itemId: 'key', quantity: 2 }],
+    });
+
+    const service = new SaveService(createMemoryAdapter({ [SAVE_KEY]: v1 }));
+    return service.load().then(({ data, wasReset }) => {
+      expect(wasReset).toBe(false);
+      expect(data.version).toBe(CURRENT_SAVE_VERSION);
+
+      // Everything that existed in v1 survives.
+      expect(data.player.x).toBe(320);
+      expect(data.player.facing).toBe('left');
+      expect(data.world.visitedFlags).toEqual(['signpost']);
+      expect(data.inventory).toEqual([{ itemId: 'key', quantity: 2 }]);
+
+      // And the new field arrives populated, not empty.
+      expect(data.party.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('still rejects a v1 save that was corrupt to begin with', () => {
+    const broken = JSON.stringify({ version: 1, savedAt: 1, player: { x: 'no' } });
+    const service = new SaveService(createMemoryAdapter({ [SAVE_KEY]: broken }));
+
+    return service.load().then(({ wasReset }) => expect(wasReset).toBe(true));
+  });
+});
+
 describe('SaveService.saveNow', () => {
   it('stamps the current version and a timestamp', async () => {
     const adapter = createMemoryAdapter();

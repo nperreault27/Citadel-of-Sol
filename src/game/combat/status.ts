@@ -86,6 +86,14 @@ export function tickStatuses(statuses: readonly StatusEntry[]): StatusEntry[] {
   const result: StatusEntry[] = [];
 
   for (const entry of statuses) {
+    // Taunt counts down in stacks rather than in a separate timer — one stack
+    // is one turn of taunting, so the stack count is the countdown.
+    if (entry.duration.kind === 'perTurnStack') {
+      const stacks = entry.stacks - 1;
+      if (stacks > 0) result.push({ ...entry, stacks });
+      continue;
+    }
+
     if (entry.duration.kind !== 'turns') {
       result.push({ ...entry });
       continue;
@@ -98,6 +106,80 @@ export function tickStatuses(statuses: readonly StatusEntry[]): StatusEntry[] {
   }
 
   return result;
+}
+
+/**
+ * Drops `untilNextTurn` statuses as the bearer's team turn begins.
+ *
+ * Immunity is applied on your turn and has to survive your own end-of-turn tick
+ * to cover the enemy turn, so it cannot expire on the normal countdown — it
+ * expires at the *start* of your next turn instead.
+ */
+export function consumeOnTurnStart(statuses: readonly StatusEntry[]): StatusEntry[] {
+  return statuses.filter((entry) => entry.duration.kind !== 'untilNextTurn').map((e) => ({ ...e }));
+}
+
+/**
+ * Removes one stack of Counter Attack.
+ *
+ * Shaped like `consumeBleedStack` because it works the same way: attacks spend
+ * it a stack at a time, with no timer.
+ */
+export function consumeCounterStack(statuses: readonly StatusEntry[]): {
+  statuses: StatusEntry[];
+  consumed: boolean;
+} {
+  const index = statuses.findIndex((entry) => entry.kind === 'counter' && entry.stacks > 0);
+  if (index === -1) return { statuses: statuses.map((entry) => ({ ...entry })), consumed: false };
+
+  const result: StatusEntry[] = [];
+  statuses.forEach((entry, i) => {
+    if (i !== index) {
+      result.push({ ...entry });
+      return;
+    }
+    const left = entry.stacks - 1;
+    if (left > 0) result.push({ ...entry, stacks: left });
+  });
+
+  return { statuses: result, consumed: true };
+}
+
+/** Removes one stack of Undying, spent when an enemy falls. */
+export function consumeUndyingStack(statuses: readonly StatusEntry[]): {
+  statuses: StatusEntry[];
+  consumed: boolean;
+} {
+  const index = statuses.findIndex((entry) => entry.kind === 'undying' && entry.stacks > 0);
+  if (index === -1) return { statuses: statuses.map((entry) => ({ ...entry })), consumed: false };
+
+  const result: StatusEntry[] = [];
+  statuses.forEach((entry, i) => {
+    if (i !== index) {
+      result.push({ ...entry });
+      return;
+    }
+    const left = entry.stacks - 1;
+    if (left > 0) result.push({ ...entry, stacks: left });
+  });
+
+  return { statuses: result, consumed: true };
+}
+
+/** True while the bearer cannot be damaged. */
+export function isImmune(statuses: readonly StatusEntry[]): boolean {
+  return statuses.some((entry) => entry.kind === 'immunity' && entry.stacks > 0);
+}
+
+/**
+ * Drops `untilRest` statuses. Called when an exhausted character recovers.
+ *
+ * This is what makes Fatigue a debuff worth stacking rather than a timer: it
+ * sits on a target indefinitely, and the only way off is to be worn down to
+ * nothing first.
+ */
+export function consumeOnRest(statuses: readonly StatusEntry[]): StatusEntry[] {
+  return statuses.filter((entry) => entry.duration.kind !== 'untilRest').map((e) => ({ ...e }));
 }
 
 /** Drops `untilAttacked` statuses. Called when the bearer is hit. */

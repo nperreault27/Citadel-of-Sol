@@ -30,6 +30,27 @@ export const POISON_DURATION_TURNS = 2;
 /** Multiplier applied to an attack that consumes a Bleed stack. */
 export const BLEED_MULTIPLIER = 2;
 
+/**
+ * Each Fatigue stack multiplies stamina loss by this, compounding.
+ *
+ * Compounding rather than additive so the game has one stacking rule: Strength
+ * and Weakness already work this way.
+ */
+export const FATIGUE_MULTIPLIER = 1.2;
+
+/**
+ * Power a Counter Attack fires at.
+ *
+ * Matches Hollis's basic, and still scales with the counter-attacker's own
+ * Attack stat through `computeDamage` — so it is their basic attack in every
+ * way that currently varies. If a second character ever gains Counter, this
+ * should move onto the combatant so each one counters with their own.
+ */
+export const COUNTER_ATTACK_POWER = 45;
+
+/** Health an Undying stack restores when an enemy falls. */
+export const UNDYING_HEAL_FRACTION = 0.5;
+
 /** Damage equal to this fraction of max health drains the maximum stamina. */
 export const STAMINA_DRAIN_PIVOT = 0.25;
 
@@ -74,9 +95,40 @@ export function stackMultiplier(netStacks: number): number {
     : WEAKNESS_MULTIPLIER ** -netStacks;
 }
 
+/**
+ * Defence after Defense Up is applied.
+ *
+ * Uses the same compounding curve as Strength, per the design. Note that the
+ * mitigation formula already has diminishing returns, so a stack of Defense Up
+ * is worth much less on a high-Defense character than the raw multiplier looks:
+ * DEF 65 to 84.5 moves mitigation from 0.435 to 0.372, about 14% less damage.
+ */
+export function effectiveDefense(combatant: Combatant): number {
+  let stacks = 0;
+  for (const entry of combatant.statuses) {
+    if (entry.kind === 'defenseUp') stacks += entry.stacks;
+  }
+  return stacks === 0 ? combatant.defense : combatant.defense * stackMultiplier(stacks);
+}
+
 /** Attack after Strength/Weakness are applied. */
 export function effectiveAttack(combatant: Combatant): number {
   return combatant.attack * stackMultiplier(netStrengthStacks(combatant.statuses));
+}
+
+/**
+ * How much Fatigue amplifies stamina loss.
+ *
+ * Applies to *every* source — damage drain, the cost of playing a card, and
+ * direct drains like Buckshot. A Fatigued character tires faster at everything
+ * they do and everything done to them.
+ */
+export function fatigueMultiplier(statuses: readonly StatusEntry[]): number {
+  let stacks = 0;
+  for (const entry of statuses) {
+    if (entry.kind === 'fatigue') stacks += entry.stacks;
+  }
+  return stacks === 0 ? 1 : FATIGUE_MULTIPLIER ** stacks;
 }
 
 // ── Damage ──────────────────────────────────────────────────────────────────
@@ -95,7 +147,7 @@ export function mitigation(defense: number): number {
  */
 export function computeDamage(attacker: Combatant, target: Combatant, power: number): number {
   const raw = effectiveAttack(attacker) * (power / 100);
-  const mitigated = raw * mitigation(target.defense);
+  const mitigated = raw * mitigation(effectiveDefense(target));
   return Math.max(1, Math.round(mitigated));
 }
 

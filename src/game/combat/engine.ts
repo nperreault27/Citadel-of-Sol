@@ -13,26 +13,41 @@
  *   round++ ← enemy turn ← end-of-turn upkeep ← end turn ──┘
  */
 
-import { drawCards, discardFromHand, refillHandTo, type Piles } from './deck';
-import { shuffle, weightedPick } from './rng';
+import {
+  drawCards,
+  discardFromHand,
+  refillHandTo,
+  reshuffleDiscardIntoDraw,
+  type Piles,
+} from './deck';
+import { nextRandom, shuffle, weightedPick } from './rng';
 import {
   applyStatus,
   consumeBleedStack,
+  consumeCounterStack,
+  consumeUndyingStack,
+  consumeOnTurnStart,
   consumeOnAttacked,
+  consumeOnRest,
   extendPoisonDuration,
+  isImmune,
   stacksOf,
   tickStatuses,
 } from './status';
 import {
   BLEED_MULTIPLIER,
   computeDamage,
+  fatigueMultiplier,
   decideFirstTeam,
   missingStaminaBonus,
+  COUNTER_ATTACK_POWER,
+  UNDYING_HEAL_FRACTION,
   poisonTickDamage,
   staminaDrainFromDamage,
 } from './stats';
 import type {
   CardDefinition,
+  PendingSelection,
   CombatEvent,
   CardEffect,
   CardInstanceId,
@@ -73,6 +88,9 @@ function cloneState(state: CombatState): CombatState {
     discardPile: [...state.discardPile],
     cards: { ...state.cards },
     enemyQueue: [...state.enemyQueue],
+    selection: state.selection
+      ? { ...state.selection, cards: [...state.selection.cards] }
+      : null,
     // Events describe only the step being taken, so every transition starts
     // from an empty list rather than inheriting the previous one.
     events: [],
@@ -112,6 +130,33 @@ export function cardDefOf(
 function teamMembers(state: CombatState, team: Team): Combatant[] {
   const order = team === 'player' ? state.playerOrder : state.enemyOrder;
   return order.map((id) => state.combatants[id]).filter((c): c is Combatant => c !== undefined);
+}
+
+/**
+ * Redirects a single-target attack to a taunting defender.
+ *
+ * Only redirects attacks — a card that merely debuffs is not "an attack", so
+ * Taunt draws blows rather than curses. Area attacks bypass it entirely, which
+ * is the counterplay: spread damage ignores the wall.
+ *
+ * With two defenders taunting, the one holding more stacks takes it; ties go to
+ * whoever appears first in team order, so the choice is at least deterministic.
+ */
+function redirectForTaunt(
+  state: CombatState,
+  defendingTeam: Team,
+  chosen: CombatantId
+): CombatantId {
+  const taunters = teamMembers(state, defendingTeam)
+    .filter((c) => !c.downed && stacksOf(c.statuses, 'taunt') > 0)
+    .sort((a, b) => stacksOf(b.statuses, 'taunt') - stacksOf(a.statuses, 'taunt'));
+
+  return taunters[0]?.id ?? chosen;
+}
+
+/** Whether a set of effects actually constitutes an attack. */
+function effectsAttack(effects: readonly CardEffect[]): boolean {
+  return effects.some((effect) => effect.type === 'damage');
 }
 
 /** A character who can currently take an action. */
@@ -179,6 +224,7 @@ export function createCombat(options: CreateCombatOptions): CombatState {
     handLimit,
     phase: first === 'player' ? 'selectCard' : 'enemyTurn',
     pendingCard: null,
+    selection: null,
     seed,
     enemyQueue: [],
     events: [],
@@ -203,7 +249,7 @@ export function createCombat(options: CreateCombatOptions): CombatState {
 // ── Targeting ───────────────────────────────────────────────────────────────
 
 function effectsHeal(effects: readonly CardEffect[]): boolean {
-  return effects.some((effect) => effect.type === 'heal');
+  return effects.some((effect) => effect.type === 'heal' || effect.type === 'healPercent');
 }
 
 /** Whether a target kind needs the player to pick one specific combatant. */
@@ -262,6 +308,7 @@ export function canPlayCard(
   content: CombatContent,
   instanceId: CardInstanceId
 ): Playability {
+  if (state.phase === 'selecting') return { ok: false, reason: 'Finish choosing first' };
   if (state.phase !== 'selectCard' && state.phase !== 'selectTarget') {
     return { ok: false, reason: 'Not your turn' };
   }
@@ -299,8 +346,12 @@ function resolveTargets(
     case 'self':
       return def.ownerId ? [def.ownerId] : [];
     case 'oneAlly':
-    case 'oneEnemy':
       return chosen ? [chosen] : [];
+    case 'oneEnemy': {
+      if (!chosen) return [];
+      // Symmetric: if an enemy is taunting, the player must hit them too.
+      return [effectsAttack(def.effects) ? redirectForTaunt(state, 'enemy', chosen) : chosen];
+    }
     case 'allAllies':
       return teamMembers(state, 'player')
         .filter((c) => !c.downed || effectsHeal(def.effects))
@@ -314,38 +365,76 @@ function resolveTargets(
   }
 }
 
-/** Applies one hit: bleed, damage, stamina drain, on-hit status expiry, downing. */
+/**
+ * Applies one hit: bleed, immunity, damage, stamina drain, expiry, counter.
+ *
+ * `isCounter` is the recursion guard. A counter-attack must never itself
+ * provoke a counter, or two characters holding stacks would volley until the
+ * stack ran out — or forever, if either had a way to regain one.
+ */
 function dealDamage(
   state: CombatState,
   attacker: Combatant,
   target: Combatant,
-  power: number
-): void {
-  if (target.downed) return;
+  power: number,
+  isCounter = false
+): number {
+  if (target.downed) return 0;
 
   let damage = computeDamage(attacker, target, power);
 
   // Bleed is consumed a stack at a time and doubles the *final* damage, after
   // Attack and Defense have both been applied. An area attack therefore eats
   // one stack from each bleeding target it hits, not one stack in total.
+  // A blocked attack still spends the stack — immunity stops the damage, not
+  // the fact that a blow landed.
   const bleed = consumeBleedStack(target.statuses);
   if (bleed.consumed) {
     target.statuses = bleed.statuses;
     damage *= BLEED_MULTIPLIER;
   }
 
+  const immune = isImmune(target.statuses);
+
   emit(state, {
     type: 'attack',
     sourceId: attacker.id,
     targetId: target.id,
-    damage,
+    damage: immune ? 0 : damage,
     bleed: bleed.consumed,
   });
 
-  applyDirectDamage(state, target, damage, true);
+  if (immune) {
+    log(state, `${target.name} shrugs off ${attacker.name}'s attack.`);
+  } else {
+    applyDirectDamage(state, target, damage, true);
+    log(
+      state,
+      `${attacker.name} hits ${target.name} for ${damage}${bleed.consumed ? ' (bleed)' : ''}.`
+    );
+  }
+
   target.statuses = consumeOnAttacked(target.statuses);
 
-  log(state, `${attacker.name} hits ${target.name} for ${damage}${bleed.consumed ? ' (bleed)' : ''}.`);
+  // The counter fires even when the blow was blocked — being attacked is what
+  // triggers it, not being hurt — but not if the hit put them down.
+  if (!isCounter && !target.downed) fireCounter(state, target, attacker);
+
+  return immune ? 0 : damage;
+}
+
+/** Hits the attacker back with a basic attack, spending one Counter stack. */
+function fireCounter(state: CombatState, defender: Combatant, attacker: Combatant): void {
+  if (attacker.downed) return;
+
+  const counter = consumeCounterStack(defender.statuses);
+  if (!counter.consumed) return;
+
+  defender.statuses = counter.statuses;
+  log(state, `${defender.name} counters!`);
+
+  // `true` marks this as a counter so it cannot provoke another one.
+  dealDamage(state, defender, attacker, COUNTER_ATTACK_POWER, true);
 }
 
 /**
@@ -359,14 +448,32 @@ function applyDirectDamage(
   state: CombatState,
   target: Combatant,
   damage: number,
-  drainsStamina: boolean
+  drainsStamina: boolean,
+  ignoreShield = false
 ): void {
   if (target.downed || damage <= 0) return;
 
-  target.health = Math.max(0, target.health - damage);
+  // The shield sits between the damage and everything else. Whatever it eats
+  // never reaches health *or* stamina — a blocked blow does not tire you — and
+  // only the overflow gets through.
+  let throughput = damage;
+
+  if (!ignoreShield && target.shield > 0) {
+    const absorbed = Math.min(target.shield, damage);
+    target.shield -= absorbed;
+    throughput = damage - absorbed;
+  }
+
+  if (throughput <= 0) return;
+
+  target.health = Math.max(0, target.health - throughput);
 
   if (drainsStamina) {
-    applyStaminaCost(state, target, staminaDrainFromDamage(damage, target.maxHealth, target.maxStamina));
+    applyStaminaCost(
+      state,
+      target,
+      staminaDrainFromDamage(throughput, target.maxHealth, target.maxStamina)
+    );
   }
 
   if (target.health === 0 && !target.downed) {
@@ -374,6 +481,48 @@ function applyDirectDamage(
     target.resting = false;
     emit(state, { type: 'downed', targetId: target.id });
     log(state, `${target.name} is down!`);
+
+    payOutUndying(state, target.team === 'player' ? 'enemy' : 'player');
+  }
+}
+
+/**
+ * Feeds anyone holding Undying when an enemy of theirs falls.
+ *
+ * Heals half their max health, or raises them at half health if they were
+ * already down — the same stack covers both, so the card pays out whether or
+ * not things have gone badly.
+ *
+ * Note the one case it cannot cover: if the holder is the last ally standing
+ * when they drop, the battle is decided before any enemy can fall, so nothing
+ * is ever left to feed on.
+ */
+function payOutUndying(state: CombatState, benefitingTeam: Team): void {
+  for (const combatant of teamMembers(state, benefitingTeam)) {
+    const undying = consumeUndyingStack(combatant.statuses);
+    if (!undying.consumed) continue;
+
+    combatant.statuses = undying.statuses;
+
+    const restored = Math.max(1, Math.round(combatant.maxHealth * UNDYING_HEAL_FRACTION));
+    const wasDowned = combatant.downed;
+
+    combatant.health = Math.min(combatant.maxHealth, combatant.health + restored);
+    if (wasDowned) combatant.downed = false;
+
+    emit(state, {
+      type: 'heal',
+      targetId: combatant.id,
+      amount: restored,
+      revived: wasDowned,
+    });
+
+    log(
+      state,
+      wasDowned
+        ? `${combatant.name} rises, gorged on the kill.`
+        : `${combatant.name} drinks deep and recovers ${restored}.`
+    );
   }
 }
 
@@ -384,15 +533,22 @@ function applyDirectDamage(
  * stamina left, which zeroes the bar and benches that character for the rest of
  * the turn. That's the interesting decision the resource is there to create.
  */
-function applyStaminaCost(state: CombatState, combatant: Combatant, cost: number): void {
-  if (cost <= 0 || combatant.downed) return;
+function applyStaminaCost(state: CombatState, combatant: Combatant, cost: number): number {
+  if (cost <= 0 || combatant.downed) return 0;
 
-  combatant.stamina = Math.max(0, combatant.stamina - cost);
+  // Every stamina loss in the game funnels through here — damage drain, the
+  // cost of playing a card, and direct drains — which is why Fatigue is applied
+  // at this one point rather than at each call site.
+  const amount = Math.round(cost * fatigueMultiplier(combatant.statuses));
+  const before = combatant.stamina;
+  combatant.stamina = Math.max(0, combatant.stamina - amount);
 
   if (combatant.stamina === 0 && !combatant.resting) {
     combatant.resting = true;
     log(state, `${combatant.name} is exhausted and must rest.`);
   }
+
+  return before - combatant.stamina;
 }
 
 function applyEffects(
@@ -423,7 +579,102 @@ function applyEffects(
             ? missingStaminaBonus(target, effect.scaling.bonusPower, effect.scaling.exponent)
             : 0;
 
-          dealDamage(state, source, target, effect.power + bonus);
+          const dealt = dealDamage(state, source, target, effect.power + bonus);
+
+          if (effect.lifesteal && dealt > 0 && !source.downed) {
+            const healed = Math.max(1, Math.round(dealt * effect.lifesteal));
+            source.health = Math.min(source.maxHealth, source.health + healed);
+            emit(state, { type: 'heal', targetId: source.id, amount: healed, revived: false });
+            log(state, `${source.name} drains ${healed} health.`);
+          }
+        }
+        break;
+      }
+
+      case 'chainDamage': {
+        if (!source) {
+          console.warn('[combat] chainDamage with no source; skipped');
+          break;
+        }
+
+        const first = targetIds[0];
+        if (!first) break;
+
+        // Annotated because it is reassigned from inside the loop that also
+        // reads it; without this TypeScript cannot infer a non-optional type.
+        let current: CombatantId = first;
+
+        for (let hit = 0; hit < effect.maxHits; hit++) {
+          const target = state.combatants[current];
+          if (!target) break;
+
+          dealDamage(state, source, target, effect.power);
+
+          const roll = nextRandom(state.seed);
+          state.seed = roll.seed;
+          if (roll.value >= effect.continueChance) break;
+
+          // Any living enemy, the one just struck included. That is what keeps
+          // the chain worth casting into a single target: without it, a lone
+          // enemy has nowhere to jump and the card is one hit for two energy.
+          const candidates = teamMembers(state, target.team)
+            .filter((c) => !c.downed)
+            .map((c) => ({ id: c.id, weight: 1 }));
+
+          if (candidates.length === 0) break;
+
+          const pick = weightedPick(candidates, state.seed);
+          state.seed = pick.seed;
+          if (!pick.picked) break;
+
+          current = pick.picked.id;
+        }
+        break;
+      }
+
+      case 'shield': {
+        if (!source) {
+          console.warn('[combat] shield effect with no source; skipped');
+          break;
+        }
+
+        const living = targetIds.filter((id) => state.combatants[id]?.downed === false);
+        if (living.length === 0) break;
+
+        const pool = source.maxHealth * effect.fractionOfSourceMaxHealth;
+        const each = Math.max(1, Math.round(effect.split ? pool / living.length : pool));
+
+        for (const id of living) {
+          const target = state.combatants[id];
+          if (!target) continue;
+
+          // Shields refresh rather than stack: the bigger one wins, so casting
+          // over a healthy shield is wasted rather than compounding.
+          if (each <= target.shield) continue;
+
+          target.shield = each;
+          emit(state, { type: 'shield', targetId: id, amount: each });
+          log(state, `${target.name} is shielded for ${each}.`);
+        }
+        break;
+      }
+
+      case 'restoreStamina': {
+        for (const id of targetIds) {
+          const target = state.combatants[id];
+          if (!target || target.downed) continue;
+
+          target.stamina = Math.min(target.maxStamina, target.stamina + effect.amount);
+
+          // Getting stamina back puts an exhausted character straight back into
+          // the fight — a deliberate exception to "must rest for a turn", and
+          // the reason the card is worth an energy.
+          if (target.stamina > 0 && target.resting) {
+            target.resting = false;
+            log(state, `${target.name} finds a second wind.`);
+          } else {
+            log(state, `${target.name} recovers ${effect.amount} stamina.`);
+          }
         }
         break;
       }
@@ -433,15 +684,15 @@ function applyEffects(
           const target = state.combatants[id];
           if (!target || target.downed) continue;
 
-          const amount = effect.amount === 'all' ? target.stamina : effect.amount;
-          applyStaminaCost(state, target, amount);
+          const requested = effect.amount === 'all' ? target.stamina : effect.amount;
+          const drained = applyStaminaCost(state, target, requested);
           emit(state, {
             type: 'drain',
             targetId: target.id,
-            amount: Math.round(amount),
+            amount: drained,
             emptied: target.stamina === 0,
           });
-          log(state, `${target.name} loses ${Math.round(amount)} stamina.`);
+          log(state, `${target.name} loses ${drained} stamina.`);
         }
         break;
       }
@@ -455,6 +706,71 @@ function applyEffects(
           target.statuses = extendPoisonDuration(target.statuses, effect.turns);
           log(state, `${target.name}'s poison lingers ${effect.turns} turn longer.`);
         }
+        break;
+      }
+
+      case 'focusedStatus': {
+        // One target left means the whole card lands on them. Against a group
+        // it spreads thin; one-on-one it is a finisher.
+        const living = targetIds.filter((id) => state.combatants[id]?.downed === false);
+        const stacks = living.length === 1 ? effect.soloStacks : effect.stacks;
+
+        for (const id of living) {
+          const target = state.combatants[id];
+          if (!target) continue;
+
+          target.statuses = applyStatus(target.statuses, effect.kind, stacks, effect.duration);
+          emit(state, { type: 'status', targetId: id, kind: effect.kind, stacks });
+          log(state, `${target.name} gains ${stacks} ${effect.kind}.`);
+        }
+        break;
+      }
+
+      case 'revealAndKeep': {
+        // Pull the cards clear of the draw pile and park them in the selection.
+        // They belong to no pile until the player chooses, so none can be lost
+        // if the battle ends mid-choice.
+        let piles = pilesOf(state);
+        const revealed: CardInstanceId[] = [];
+
+        for (let i = 0; i < effect.look; i++) {
+          if (piles.drawPile.length === 0) {
+            if (piles.discardPile.length === 0) break;
+            piles = reshuffleDiscardIntoDraw(piles);
+          }
+          const card = piles.drawPile.shift();
+          if (card === undefined) break;
+          revealed.push(card);
+        }
+
+        withPiles(state, piles);
+        if (revealed.length === 0) break;
+
+        state.selection = {
+          kind: 'keepOne',
+          cards: revealed,
+          drawAfter: 0,
+          prompt: 'Keep one card',
+        };
+        state.phase = 'selecting';
+        break;
+      }
+
+      case 'discardThenDraw': {
+        // With nothing to throw away there is no decision, so skip the prompt
+        // rather than parking the player in a phase they cannot leave.
+        if (state.hand.length === 0) {
+          withPiles(state, drawCards(pilesOf(state), effect.draw));
+          break;
+        }
+
+        state.selection = {
+          kind: 'discardOne',
+          cards: [...state.hand],
+          drawAfter: effect.draw,
+          prompt: 'Discard a card',
+        };
+        state.phase = 'selecting';
         break;
       }
 
@@ -499,18 +815,24 @@ function applyEffects(
         break;
       }
 
-      case 'heal': {
+      case 'heal':
+      case 'healPercent': {
         for (const id of targetIds) {
           const target = state.combatants[id];
           if (!target) continue;
 
+          const amount =
+            effect.type === 'heal'
+              ? effect.amount
+              : Math.max(1, Math.round(target.maxHealth * effect.fraction));
+
           const wasDowned = target.downed;
-          target.health = Math.min(target.maxHealth, target.health + effect.amount);
+          target.health = Math.min(target.maxHealth, target.health + amount);
 
           emit(state, {
             type: 'heal',
             targetId: target.id,
-            amount: effect.amount,
+            amount,
             revived: wasDowned && target.health > 0,
           });
 
@@ -518,7 +840,7 @@ function applyEffects(
             target.downed = false;
             log(state, `${target.name} is back on their feet.`);
           } else {
-            log(state, `${target.name} recovers ${effect.amount} health.`);
+            log(state, `${target.name} recovers ${amount} health.`);
           }
         }
         break;
@@ -643,6 +965,14 @@ export function resolveCard(
     if (owner) {
       log(next, `${owner.name} plays ${def.name}.`);
       applyStaminaCost(next, owner, def.staminaCost);
+
+      // A cost, not damage: no stamina drain, no Bleed spent, no counter, and
+      // never lethal — paying always leaves at least a sliver.
+      if (def.healthCostFraction) {
+        const paid = Math.max(1, Math.round(owner.maxHealth * def.healthCostFraction));
+        owner.health = Math.max(1, owner.health - paid);
+        log(next, `${owner.name} pays ${paid} health.`);
+      }
     }
   } else {
     log(next, `Team plays ${def.name}.`);
@@ -674,13 +1004,66 @@ export function resolveCard(
   }
 
   next.pendingCard = null;
-  next.phase = 'selectCard';
+  // A card that opened a selection stays in that phase until the player picks.
+  if (next.phase !== 'selecting') next.phase = 'selectCard';
   checkBattleEnd(next);
 
   return next;
 }
 
+/**
+ * Finishes a card that was waiting on the player to pick a card.
+ *
+ * `keepOne` puts the chosen card in hand and bins the rest; `discardOne` bins
+ * the chosen card and then draws. Either way the selection closes and the turn
+ * continues.
+ */
+export function resolveSelection(
+  state: CombatState,
+  chosen: CardInstanceId
+): CombatState {
+  if (state.phase !== 'selecting' || !state.selection) return state;
+  if (!state.selection.cards.includes(chosen)) return state;
+
+  const next = cloneState(state);
+  const selection: PendingSelection = next.selection ?? {
+    kind: 'keepOne',
+    cards: [],
+    drawAfter: 0,
+    prompt: '',
+  };
+
+  if (selection.kind === 'keepOne') {
+    next.hand.push(chosen);
+    for (const card of selection.cards) {
+      if (card !== chosen) next.discardPile.push(card);
+    }
+    log(next, 'Kept a card.');
+  } else {
+    withPiles(next, discardFromHand(pilesOf(next), chosen));
+    withPiles(next, drawCards(pilesOf(next), selection.drawAfter));
+    log(next, `Discarded a card and drew ${selection.drawAfter}.`);
+  }
+
+  next.selection = null;
+  next.phase = 'selectCard';
+  return next;
+}
+
 // ── Turn transitions ────────────────────────────────────────────────────────
+
+/**
+ * Start-of-turn upkeep: clears statuses that last until this team acts again.
+ *
+ * Immunity is applied on your own turn, so it has to survive your end-of-turn
+ * tick to cover the enemy turn. Expiring it here — as your next turn opens —
+ * gives exactly one enemy turn of protection.
+ */
+function runTurnStart(state: CombatState, team: Team): void {
+  for (const combatant of teamMembers(state, team)) {
+    combatant.statuses = consumeOnTurnStart(combatant.statuses);
+  }
+}
 
 /**
  * End-of-turn upkeep for one team: statuses tick, exhausted characters recover.
@@ -692,12 +1075,16 @@ function runUpkeep(state: CombatState, team: Team): void {
   for (const combatant of teamMembers(state, team)) {
     // Poison resolves before the timers tick, so a 2-turn stack deals damage on
     // both of the turns it is alive rather than being cut short on the second.
-    if (!combatant.downed) {
+    // Immunity blocks poison too — it is damage, and without this Ivy would
+    // walk straight through the strongest defensive card in the game.
+    if (!combatant.downed && !isImmune(combatant.statuses)) {
       const stacks = stacksOf(combatant.statuses, 'poison');
       if (stacks > 0) {
         const damage = poisonTickDamage(stacks, combatant.maxHealth);
         emit(state, { type: 'poison', targetId: combatant.id, damage });
-        applyDirectDamage(state, combatant, damage, false);
+        // `true` skips the shield: poison is the counter to shielding, so it
+        // eats health directly however much protection is stacked up.
+        applyDirectDamage(state, combatant, damage, false, true);
         log(state, `${combatant.name} takes ${damage} from poison.`);
       }
     }
@@ -709,6 +1096,9 @@ function runUpkeep(state: CombatState, team: Team): void {
     if (combatant.resting) {
       combatant.resting = false;
       combatant.stamina = combatant.maxStamina;
+      // Resting is the only thing that clears Fatigue, so being ground down to
+      // nothing is also how you shake it off.
+      combatant.statuses = consumeOnRest(combatant.statuses);
       log(state, `${combatant.name} has recovered.`);
     }
   }
@@ -781,6 +1171,7 @@ function beginEnemyTurn(state: CombatState): CombatState {
 
   state.activeTeam = 'enemy';
   state.phase = 'enemyTurn';
+  runTurnStart(state, 'enemy');
   state.enemyQueue = teamMembers(state, 'enemy')
     .filter((enemy) => !enemy.downed)
     .map((enemy) => enemy.id);
@@ -848,6 +1239,7 @@ function finishEnemyTurn(state: CombatState): CombatState {
   state.phase = 'selectCard';
   state.energy = state.maxEnergy;
   state.enemyQueue = [];
+  runTurnStart(state, 'player');
 
   return state;
 }
@@ -919,7 +1311,15 @@ function enemyTargets(state: CombatState, action: EnemyAction): CombatantId[] {
     state.seed
   );
   state.seed = pick.seed;
-  return pick.picked ? [pick.picked.id] : [];
+  if (!pick.picked) return [];
+
+  // Roll first, then redirect: the roll must be consumed either way, or a
+  // taunting defender would silently change the RNG stream and break replays.
+  if (action.target === 'oneEnemy' && effectsAttack(action.effects)) {
+    return [redirectForTaunt(state, 'player', pick.picked.id)];
+  }
+
+  return [pick.picked.id];
 }
 
 function hasTargets(state: CombatState, action: EnemyAction): boolean {

@@ -18,7 +18,17 @@ export type CardInstanceId = string;
 
 // ── Statuses ────────────────────────────────────────────────────────────────
 
-export type StatusKind = 'strength' | 'weakness' | 'poison' | 'bleed';
+export type StatusKind =
+  | 'strength'
+  | 'weakness'
+  | 'poison'
+  | 'bleed'
+  | 'fatigue'
+  | 'taunt'
+  | 'counter'
+  | 'immunity'
+  | 'undying'
+  | 'defenseUp';
 
 /**
  * How a status leaves play.
@@ -28,11 +38,22 @@ export type StatusKind = 'strength' | 'weakness' | 'poison' | 'bleed';
  *   target hit twice carries two independent stacks that expire separately.
  * - Bleed: `permanent`, but consumed a stack at a time by attacks rather than
  *   by any timer.
+ * - Fatigue: `untilRest`, so it persists indefinitely on a character who never
+ *   bottoms out — which is what makes it worth stacking.
+ * - Taunt: `perTurnStack` — the stack count *is* the countdown, losing one at
+ *   the end of each of the bearer's team turns.
+ * - Counter: `permanent`, spent a stack at a time by incoming attacks.
+ * - Immunity: `untilNextTurn`, cleared as the bearer's next team turn begins,
+ *   so it covers exactly one enemy turn.
+ * - Undying: `permanent`, spent a stack at a time when an enemy falls.
  */
 export type StatusDuration =
   | { kind: 'permanent' }
   | { kind: 'turns'; remaining: number }
-  | { kind: 'untilAttacked' };
+  | { kind: 'untilAttacked' }
+  | { kind: 'untilRest' }
+  | { kind: 'perTurnStack' }
+  | { kind: 'untilNextTurn' };
 
 export interface StatusEntry {
   kind: StatusKind;
@@ -53,6 +74,15 @@ export interface Combatant {
   /** Base 100 for most characters; spent by acting and drained by taking hits. */
   stamina: number;
   maxStamina: number;
+
+  /**
+   * Damage absorbed before health is touched.
+   *
+   * A resource rather than a status: it has a magnitude, is spent rather than
+   * expiring, and needs its own place on the health bar. Poison ignores it
+   * entirely, which is what makes damage-over-time the counter to shielding.
+   */
+  shield: number;
 
   attack: number;
   defense: number;
@@ -100,8 +130,15 @@ export type CardEffect =
        */
       power: number;
       scaling?: DamageScaling;
+      /** Fraction of the damage dealt returned to the attacker as healing. */
+      lifesteal?: number;
     }
   | { type: 'heal'; amount: number }
+  /**
+   * Heals a fraction of the target's own max health, so the card stays
+   * meaningful on a 400-health tank and doesn't overheal a fragile one.
+   */
+  | { type: 'healPercent'; fraction: number }
   | { type: 'status'; kind: StatusKind; stacks: number; duration: StatusDuration }
   | { type: 'draw'; count: number }
   /** Reduces the target's stamina directly. `'all'` empties the bar outright. */
@@ -117,7 +154,49 @@ export type CardEffect =
    * Saber's payoff: discards the rest of the hand and makes one free attack per
    * card discarded, each at a random living enemy.
    */
-  | { type: 'discardHandAndAttack'; power: number; bleedStacks: number };
+  | { type: 'discardHandAndAttack'; power: number; bleedStacks: number }
+  /**
+   * Lyra's payoff: spreads a status across the enemy team, but concentrates it
+   * when only one target is left — the same card reads as crowd control against
+   * a group and as a finisher one-on-one.
+   */
+  | {
+      type: 'focusedStatus';
+      kind: StatusKind;
+      stacks: number;
+      /** Applied instead of `stacks` when there is exactly one target. */
+      soloStacks: number;
+      duration: StatusDuration;
+    }
+  /** Reveals the top `look` cards and asks the player to keep one. */
+  | { type: 'revealAndKeep'; look: number }
+  /** Asks the player to discard one card, then draws. */
+  | { type: 'discardThenDraw'; draw: number }
+  /**
+   * Emrys's chain: hits the chosen target, then keeps arcing to a *different*
+   * enemy while the rolls keep coming up. Nothing caps it but the roll, so the
+   * chain can double back to an enemy it already hit.
+   */
+  | {
+      type: 'chainDamage';
+      power: number;
+      /** Probability the chain jumps again after each hit. */
+      continueChance: number;
+      /** Safety valve, not a design cap — see the engine. */
+      maxHits: number;
+    }
+  /** Restores stamina. Not damage, so Fatigue does not touch it. */
+  | { type: 'restoreStamina'; amount: number }
+  /**
+   * Thane's shields, sized from the *caster's* max health rather than the
+   * target's — his bulk is what he is handing out.
+   */
+  | {
+      type: 'shield';
+      fractionOfSourceMaxHealth: number;
+      /** Divides the total between the targets instead of giving each the full amount. */
+      split?: boolean;
+    };
 
 export interface CardDefinition {
   id: CardDefId;
@@ -143,6 +222,14 @@ export interface CardDefinition {
    * Drives Overdraw's "if this empties a character's stamina, gain an energy".
    */
   energyOnStaminaEmpty?: number;
+
+  /**
+   * Fraction of the owner's max health spent to play this card.
+   *
+   * A cost rather than damage: it never drains stamina, spends Bleed, or
+   * provokes a counter, and it can never be lethal — it stops at 1 health.
+   */
+  healthCostFraction?: number;
 }
 
 export interface CardInstance {
@@ -181,7 +268,33 @@ export type CombatEvent =
   | { type: 'heal'; targetId: CombatantId; amount: number; revived: boolean }
   | { type: 'drain'; targetId: CombatantId; amount: number; emptied: boolean }
   | { type: 'status'; targetId: CombatantId; kind: StatusKind; stacks: number }
+  | { type: 'shield'; targetId: CombatantId; amount: number }
   | { type: 'downed'; targetId: CombatantId };
+
+/**
+ * A choice a card is waiting on, mid-resolution.
+ *
+ * Cards that reveal or rummage need the player in the loop, which a pure
+ * transition cannot do on its own. The engine parks in the `selecting` phase
+ * with this describing the choice, and `resolveSelection` finishes the card.
+ */
+export interface PendingSelection {
+  kind: 'keepOne' | 'discardOne';
+
+  /**
+   * The cards being chosen between.
+   *
+   * For `keepOne` these are held outside every pile — already off the draw pile
+   * but not yet in hand or discard, so no card is ever lost if the battle ends
+   * mid-choice.
+   */
+  cards: CardInstanceId[];
+
+  /** Cards drawn once the choice is made. */
+  drawAfter: number;
+
+  prompt: string;
+}
 
 // ── Battle state ────────────────────────────────────────────────────────────
 
@@ -192,6 +305,8 @@ export type CombatPhase =
   | 'selectTarget'
   /** Hand exceeds the limit at end of turn; player must discard down. */
   | 'discarding'
+  /** A card is mid-resolution and needs the player to pick one card. */
+  | 'selecting'
   /** Enemy team is acting. */
   | 'enemyTurn'
   | 'victory'
@@ -219,6 +334,9 @@ export interface CombatState {
   phase: CombatPhase;
   /** The card awaiting a target, during `selectTarget`. */
   pendingCard: CardInstanceId | null;
+
+  /** The choice awaiting the player, during `selecting`. */
+  selection: PendingSelection | null;
 
   /** Deterministic RNG state, so a battle replays identically from a seed. */
   seed: number;

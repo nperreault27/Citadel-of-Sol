@@ -1,5 +1,4 @@
 import { useGameStore } from '@/state/useGameStore';
-import { getCombatActions } from '@/state/useCombatStore';
 import { EventBus } from '@/bridge/EventBus';
 
 /**
@@ -8,7 +7,7 @@ import { EventBus } from '@/bridge/EventBus';
  * Each value is pulled with its own narrow selector, so picking up an item
  * re-renders the inventory count without touching the health pips.
  */
-export function HUD() {
+export function HUD({ onOpenRoster }: { onOpenRoster: () => void }) {
   const health = useGameStore((s) => s.health);
   const maxHealth = useGameStore((s) => s.maxHealth);
   const itemCount = useGameStore((s) => s.inventory.length);
@@ -26,14 +25,7 @@ export function HUD() {
 
         {/* Temporary entry point while the arena is the thing being built —
             eventually a battle starts from an encounter in the world. */}
-        <button
-          type="button"
-          className="button button--ghost"
-          onClick={() => {
-            getCombatActions().startBattle();
-            EventBus.emit('arena:enter');
-          }}
-        >
+        <button type="button" className="button button--ghost" onClick={onOpenRoster}>
           Arena
         </button>
 

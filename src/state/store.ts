@@ -1,4 +1,5 @@
 import { createStore } from 'zustand/vanilla';
+import { DEFAULT_PARTY, PARTY_SIZE } from '@/game/combat/content';
 import type { SaveData } from '@/save/schema';
 
 /**
@@ -42,6 +43,9 @@ export interface GameState {
   mapKey: string;
   visitedFlags: string[];
 
+  /** Ids of the three equipped characters. */
+  party: string[];
+
   // ── Inventory ──
   inventory: InventoryEntry[];
 
@@ -59,6 +63,7 @@ export interface GameState {
   addItem: (itemId: string, quantity?: number) => void;
   removeItem: (itemId: string, quantity?: number) => void;
   setFlag: (flag: string) => void;
+  setParty: (party: string[]) => void;
   hasFlag: (flag: string) => boolean;
   openDialog: (speaker: string, lines: string[]) => void;
   advanceDialog: () => void;
@@ -75,6 +80,7 @@ export const gameStore = createStore<GameState>()((set, get) => ({
 
   mapKey: 'overworld',
   visitedFlags: [],
+  party: [...DEFAULT_PARTY],
 
   inventory: [],
 
@@ -127,6 +133,8 @@ export const gameStore = createStore<GameState>()((set, get) => ({
 
   hasFlag: (flag) => get().visitedFlags.includes(flag),
 
+  setParty: (party) => set({ party: party.slice(0, PARTY_SIZE) }),
+
   openDialog: (speaker, lines) => set({ dialog: { speaker, lines, lineIndex: 0 } }),
 
   advanceDialog: () =>
@@ -147,6 +155,7 @@ export const gameStore = createStore<GameState>()((set, get) => ({
       maxHealth: save.player.maxHealth,
       mapKey: save.world.mapKey,
       visitedFlags: [...save.world.visitedFlags],
+      party: save.party.length > 0 ? [...save.party] : [...DEFAULT_PARTY],
       inventory: save.inventory.map((entry) => ({ ...entry })),
       saveWasReset: wasReset,
     }),
@@ -178,6 +187,7 @@ export function toSaveData(
       health: state.health,
       maxHealth: state.maxHealth,
     },
+    party: [...state.party],
     world: {
       mapKey: state.mapKey,
       visitedFlags: [...state.visitedFlags],

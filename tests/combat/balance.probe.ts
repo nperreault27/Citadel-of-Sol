@@ -1,11 +1,12 @@
 import { describe, it } from 'vitest';
-import { COMBAT_CONTENT, createArenaBattle } from '@/game/combat/content';
+import { COMBAT_CONTENT, ROSTER, createArenaBattle } from '@/game/combat/content';
 import {
   canPlayCard,
   cardDefOf,
   chooseTarget,
   confirmDiscard,
   endPlayerTurn,
+  resolveSelection,
   resolveEnemyTurn,
   legalTargets,
   selectCard,
@@ -33,6 +34,15 @@ function playOut(state: CombatState): CombatState {
 
   for (let i = 0; i < 300; i++) {
     if (current.phase === 'victory' || current.phase === 'defeat') break;
+
+    // Cards that ask the player to pick one park the battle here. A simulation
+    // has no preference, so it takes the first option.
+    if (current.phase === 'selecting') {
+      const choice = current.selection?.cards[0];
+      if (!choice) break;
+      current = resolveSelection(current, choice);
+      continue;
+    }
 
     // The enemy turn is stepped for the UI's benefit; simulations resolve it
     // in one go.
@@ -77,26 +87,60 @@ function playOut(state: CombatState): CombatState {
   return current;
 }
 
-describe('balance probe', () => {
-  it('reports outcomes across many seeds', () => {
-    let wins = 0;
-    const rounds: number[] = [];
-    const survivors: number[] = [];
+/** Every distinct party of three, so no combination hides a broken card. */
+function everyParty(): string[][] {
+  const ids = ROSTER.map((character) => character.id);
+  const parties: string[][] = [];
 
-    for (let seed = 1; seed <= SEEDS; seed++) {
-      const result = playOut(createArenaBattle(seed));
-      if (result.phase === 'victory') wins++;
-      rounds.push(result.round);
-      survivors.push(result.playerOrder.filter((id) => !result.combatants[id]?.downed).length);
+  for (let a = 0; a < ids.length; a++) {
+    for (let b = a + 1; b < ids.length; b++) {
+      for (let c = b + 1; c < ids.length; c++) {
+        parties.push([ids[a] ?? '', ids[b] ?? '', ids[c] ?? '']);
+      }
+    }
+  }
+
+  return parties;
+}
+
+describe('balance probe', () => {
+  it('reports outcomes for every party of three', () => {
+    const rows: Array<{ party: string; wins: number; median: number; survivors: number }> = [];
+
+    for (const party of everyParty()) {
+      let wins = 0;
+      const rounds: number[] = [];
+      const survivors: number[] = [];
+
+      for (let seed = 1; seed <= SEEDS; seed++) {
+        const result = playOut(createArenaBattle(party, seed));
+        if (result.phase === 'victory') wins++;
+        rounds.push(result.round);
+        survivors.push(result.playerOrder.filter((id) => !result.combatants[id]?.downed).length);
+      }
+
+      rounds.sort((a, b) => a - b);
+      rows.push({
+        party: party.join(' + '),
+        wins,
+        median: rounds[Math.floor(rounds.length / 2)] ?? 0,
+        survivors: survivors.reduce((a, b) => a + b, 0) / survivors.length,
+      });
     }
 
-    rounds.sort((a, b) => a - b);
-    const median = rounds[Math.floor(rounds.length / 2)];
-    const averageSurvivors = survivors.reduce((a, b) => a + b, 0) / survivors.length;
+    rows.sort((a, b) => b.wins - a.wins);
 
-    console.log(`\n  seeds        ${SEEDS}`);
-    console.log(`  win rate     ${((wins / SEEDS) * 100).toFixed(1)}%  (${wins} wins)`);
-    console.log(`  rounds       min ${rounds[0]}  median ${median}  max ${rounds.at(-1)}`);
-    console.log(`  survivors    ${averageSurvivors.toFixed(2)} of 3 on average\n`);
+    console.log(`
+  ${SEEDS} seeds per party
+`);
+    console.log('  party                     win%   median rounds   survivors');
+    for (const row of rows) {
+      const win = ((row.wins / SEEDS) * 100).toFixed(1).padStart(5);
+      console.log(
+        `  ${row.party.padEnd(24)} ${win}%${String(row.median).padStart(12)}` +
+          `${row.survivors.toFixed(2).padStart(13)}`
+      );
+    }
+    console.log('');
   });
 });
