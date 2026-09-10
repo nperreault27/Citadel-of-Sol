@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
 import { EventBus } from '@/bridge/EventBus';
-import { inputState } from '@/bridge/inputState';
 import { gameStore, toSaveData } from '@/state/store';
 import { saveService } from '@/save';
 import { CURRENT_SAVE_VERSION } from '@/save/schema';
@@ -8,7 +7,14 @@ import { getInitialPlayer } from '@/save/session';
 import { AssetKeys, PLAYER_FRAMES } from '../assets';
 import { CAMERA_ZOOM, PLAYER_SPEED, TILE_SIZE } from '../config';
 import { axesToVelocity, velocityToFacing, type Facing } from '../systems/movement';
-import { tileInFront, tilesEqual, worldToTile, type TileCoord } from '../systems/grid';
+import {
+  tileInFront,
+  tileToWorldCenter,
+  tilesEqual,
+  worldToTile,
+  type TileCoord,
+} from '../systems/grid';
+import { findPath } from '../systems/pathfinding';
 
 interface Interactable {
   tile: TileCoord;
@@ -22,6 +28,16 @@ export class WorldScene extends Phaser.Scene {
   private lastTile: TileCoord = { tileX: -1, tileY: -1 };
   private interactables: Interactable[] = [];
   private teardown: Array<() => void> = [];
+
+  /** Remaining waypoints of the current click-to-move path. */
+  private path: TileCoord[] = [];
+  /** Blocked lookup, flattened to `y * width + x`, built once from the map. */
+  private blocked: boolean[] = [];
+  private mapWidthTiles = 0;
+  private mapHeightTiles = 0;
+  private moveMarker?: Phaser.GameObjects.Arc;
+  /** Interactable to talk to once the current path finishes. */
+  private pendingInteract: TileCoord | null = null;
 
   constructor() {
     super({ key: 'WorldScene' });
@@ -57,6 +73,7 @@ export class WorldScene extends Phaser.Scene {
     collisionLayer.setVisible(false);
     collisionLayer.setCollisionByProperty({ collides: true });
 
+    this.buildBlockedGrid(map, collisionLayer);
     this.createPlayer(map);
     this.physics.add.collider(this.player, collisionLayer);
 
@@ -69,6 +86,7 @@ export class WorldScene extends Phaser.Scene {
 
     this.collectInteractables(map);
     this.wireEvents();
+    this.wireClickToMove();
 
     gameStore.getState().setPhase('playing');
     EventBus.emit('world:ready', { mapKey: gameStore.getState().mapKey });
@@ -135,6 +153,15 @@ export class WorldScene extends Phaser.Scene {
 
   private wireEvents(): void {
     this.teardown.push(EventBus.on('ui:action-pressed', () => this.tryInteract()));
+
+    this.teardown.push(
+      EventBus.on('arena:enter', () => {
+        // `switch` sleeps this scene instead of shutting it down, so the map,
+        // the player's position and every listener survive until they return.
+        this.stopMoving();
+        this.scene.switch('ArenaScene');
+      })
+    );
 
     this.teardown.push(
       EventBus.on('ui:request-save', () => {
@@ -214,14 +241,154 @@ export class WorldScene extends Phaser.Scene {
     EventBus.emit('dialog:open', { speaker: hit.speaker, lines: hit.lines });
   }
 
-  override update(): void {
-    if (gameStore.getState().phase !== 'playing') {
+  /** Precomputes which tiles are solid, so pathfinding never calls into Phaser. */
+  private buildBlockedGrid(
+    map: Phaser.Tilemaps.Tilemap,
+    collisionLayer: Phaser.Tilemaps.TilemapLayer
+  ): void {
+    this.mapWidthTiles = map.width;
+    this.mapHeightTiles = map.height;
+    this.blocked = new Array<boolean>(map.width * map.height).fill(false);
+
+    for (let y = 0; y < map.height; y++) {
+      for (let x = 0; x < map.width; x++) {
+        const tile = collisionLayer.getTileAt(x, y);
+        this.blocked[y * map.width + x] = tile !== null && tile.collides;
+      }
+    }
+  }
+
+  private isPassable = (tileX: number, tileY: number): boolean => {
+    if (tileX < 0 || tileY < 0 || tileX >= this.mapWidthTiles || tileY >= this.mapHeightTiles) {
+      return false;
+    }
+    return !this.blocked[tileY * this.mapWidthTiles + tileX];
+  };
+
+  /** Tap anywhere walkable to path there. */
+  private wireClickToMove(): void {
+    this.input.on(Phaser.Input.Events.POINTER_DOWN, (pointer: Phaser.Input.Pointer) => {
+      const state = gameStore.getState();
+
+      // A tap while a dialog is open advances it instead of issuing a move —
+      // otherwise the player walks away mid-conversation.
+      if (state.dialog) {
+        state.advanceDialog();
+        return;
+      }
+
+      if (state.phase !== 'playing') return;
+
+      const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const goal = worldToTile({ x: world.x, y: world.y }, TILE_SIZE);
+      const from = worldToTile({ x: this.player.x, y: this.player.y }, TILE_SIZE);
+
+      const path = findPath(
+        from,
+        goal,
+        this.isPassable,
+        this.mapWidthTiles,
+        this.mapHeightTiles
+      );
+
+      if (path.length === 0) return;
+
+      this.showMoveMarker(goal);
+
+      // A tap on something interactable walks up to it and then talks, so the
+      // player never has to line up a facing by hand. Stop one tile short —
+      // the target tile is where the object is standing.
+      const hit = this.interactables.find((entry) => tilesEqual(entry.tile, goal));
+      this.pendingInteract = hit ? goal : null;
+      this.path = hit ? path.slice(0, -1) : path;
+
+      // Already adjacent: nothing to walk, so talk immediately.
+      if (this.pendingInteract && this.path.length === 0) this.arriveAtInteractable();
+    });
+  }
+
+  /** Faces the pending interactable and opens its dialog. */
+  private arriveAtInteractable(): void {
+    const target = this.pendingInteract;
+    this.pendingInteract = null;
+    if (!target) return;
+
+    const from = worldToTile({ x: this.player.x, y: this.player.y }, TILE_SIZE);
+    this.faceToward(from, target);
+    this.tryInteract();
+  }
+
+  private faceToward(from: TileCoord, to: TileCoord): void {
+    const dx = to.tileX - from.tileX;
+    const dy = to.tileY - from.tileY;
+    if (dx === 0 && dy === 0) return;
+
+    const facing: Facing =
+      Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : dy > 0 ? 'down' : 'up';
+
+    this.facing = facing;
+    this.player.setFrame(PLAYER_FRAMES[facing]);
+  }
+
+  private showMoveMarker(tile: TileCoord): void {
+    const centre = tileToWorldCenter(tile, TILE_SIZE);
+
+    this.moveMarker?.destroy();
+    this.moveMarker = this.add.circle(centre.x, centre.y, 5, 0xd8a657, 0.9);
+
+    this.tweens.add({
+      targets: this.moveMarker,
+      alpha: 0,
+      scale: 2,
+      duration: 420,
+      onComplete: () => this.moveMarker?.destroy(),
+    });
+  }
+
+  private stopMoving(): void {
+    this.path = [];
+    this.player.setVelocity(0, 0);
+  }
+
+  /**
+   * Steers toward the next waypoint.
+   *
+   * Waypoints are tile centres, and a waypoint counts as reached within a few
+   * pixels — testing for exact equality would overshoot and jitter, since the
+   * sprite moves by a fractional distance each frame.
+   */
+  private followPath(): void {
+    const next = this.path[0];
+    if (!next) {
       this.player.setVelocity(0, 0);
       return;
     }
 
-    const velocity = axesToVelocity(inputState.moveX, inputState.moveY, PLAYER_SPEED);
+    const target = tileToWorldCenter(next, TILE_SIZE);
+    const dx = target.x - this.player.x;
+    const dy = target.y - this.player.y;
+
+    if (Math.hypot(dx, dy) <= 3) {
+      this.path.shift();
+      if (this.path.length === 0) {
+        this.player.setVelocity(0, 0);
+        this.arriveAtInteractable();
+      }
+      return;
+    }
+
+    const velocity = axesToVelocity(dx, dy, PLAYER_SPEED);
     this.player.setVelocity(velocity.x, velocity.y);
+  }
+
+  override update(): void {
+    if (gameStore.getState().phase !== 'playing') {
+      this.stopMoving();
+      return;
+    }
+
+    this.followPath();
+    const velocity = { x: this.player.body.velocity.x, y: this.player.body.velocity.y };
 
     const nextFacing = velocityToFacing(velocity, this.facing);
     if (nextFacing !== this.facing) {

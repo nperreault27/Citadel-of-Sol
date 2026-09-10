@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { EventBus } from '@/bridge/EventBus';
-import { AssetKeys, AssetPaths, PLAYER_FRAME, assetUrl } from '../assets';
+import { AssetKeys, AssetPaths, COMBATANT_FRAME, PLAYER_FRAME, assetUrl } from '../assets';
 
 /**
  * Loads every asset the world needs, reporting progress up to React.
@@ -30,6 +30,10 @@ export class PreloadScene extends Phaser.Scene {
     this.load.spritesheet(AssetKeys.player, assetUrl(AssetPaths.player), {
       frameWidth: PLAYER_FRAME.width,
       frameHeight: PLAYER_FRAME.height,
+    });
+    this.load.spritesheet(AssetKeys.combatants, assetUrl(AssetPaths.combatants), {
+      frameWidth: COMBATANT_FRAME.width,
+      frameHeight: COMBATANT_FRAME.height,
     });
   }
 

@@ -20,6 +20,7 @@ export interface GameToUiEvents {
   'loot:acquired': { itemId: string; quantity: number };
   'game:paused': void;
   'game:resumed': void;
+  'arena:ready': void;
 }
 
 /** Commands the UI sends down into the game world. */
@@ -29,6 +30,10 @@ export interface UiToGameEvents {
   'ui:dialog-choice': { choiceIndex: number };
   'ui:action-pressed': void;
   'ui:request-save': void;
+  /** Leave the overworld and open the arena. */
+  'arena:enter': void;
+  /** Return to the overworld. */
+  'arena:exit': void;
 }
 
 export type GameEvents = GameToUiEvents & UiToGameEvents;

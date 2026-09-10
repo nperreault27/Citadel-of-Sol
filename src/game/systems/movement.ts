@@ -13,11 +13,15 @@ export interface Vector2 {
 export type Facing = 'up' | 'down' | 'left' | 'right';
 
 /**
- * Converts raw joystick axes into a velocity vector.
+ * Converts a direction vector into a velocity vector at the given speed.
  *
- * Normalises the input vector so diagonal movement isn't ~1.41x faster than
- * cardinal movement — the classic bug from naively multiplying each axis by
- * speed independently.
+ * Used by click-to-move to steer toward the next waypoint: the caller passes
+ * the raw pixel delta to the target and gets back a velocity of the right
+ * magnitude.
+ *
+ * Normalises the input so diagonal movement isn't ~1.41x faster than cardinal
+ * movement — the classic bug from naively multiplying each axis by speed
+ * independently.
  */
 export function axesToVelocity(moveX: number, moveY: number, speed: number): Vector2 {
   const magnitude = Math.hypot(moveX, moveY);
@@ -26,8 +30,8 @@ export function axesToVelocity(moveX: number, moveY: number, speed: number): Vec
     return { x: 0, y: 0 };
   }
 
-  // A magnitude below 1 (partial joystick deflection) is preserved so the player
-  // can walk slowly; only overshoot past 1 gets clamped.
+  // A magnitude below 1 is preserved rather than scaled up, so a caller that
+  // passes an already-normalised partial vector gets proportional speed.
   const scale = (magnitude > 1 ? 1 / magnitude : 1) * speed;
 
   return { x: moveX * scale, y: moveY * scale };
@@ -52,11 +56,3 @@ export function velocityToFacing(velocity: Vector2, previous: Facing): Facing {
   return velocity.y > 0 ? 'down' : 'up';
 }
 
-/** Applies a deadzone, rescaling the remaining range so output still reaches 1. */
-export function applyDeadzone(value: number, deadzone: number): number {
-  const magnitude = Math.abs(value);
-  if (magnitude <= deadzone) return 0;
-
-  const rescaled = (magnitude - deadzone) / (1 - deadzone);
-  return Math.sign(value) * rescaled;
-}

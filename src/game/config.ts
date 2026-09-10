@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { WorldScene } from './scenes/WorldScene';
+import { ArenaScene } from './scenes/ArenaScene';
 
 /** World units per tile. Must match `tilewidth`/`tileheight` in the Tiled map. */
 export const TILE_SIZE = 32;
@@ -55,6 +56,9 @@ export function createGameConfig(parent: HTMLElement): Phaser.Types.Core.GameCon
       antialias: false,
     },
 
-    scene: [BootScene, PreloadScene, WorldScene],
+    // Only the first is started automatically; ArenaScene is entered via
+    // `scene.switch`, which sleeps the overworld rather than destroying it, so
+    // the player returns to exactly where they left.
+    scene: [BootScene, PreloadScene, WorldScene, ArenaScene],
   };
 }

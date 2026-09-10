@@ -1,22 +1,28 @@
 import { useGameStore } from '@/state/useGameStore';
+import { useCombatStore } from '@/state/useCombatStore';
 import { HUD } from './HUD';
-import { Joystick } from './Joystick';
 import { ActionButton } from './ActionButton';
 import { DialogModal } from './DialogModal';
 import { LoadingScreen } from './LoadingScreen';
 import { PauseMenu } from './PauseMenu';
 import { SaveResetNotice } from './SaveResetNotice';
+import { CombatScreen } from './combat/CombatScreen';
 
 /**
  * Everything drawn on top of the canvas.
  *
  * The overlay root sets `pointer-events: none` in CSS and each interactive
- * widget sets it back to `auto`. That way a tap on empty space falls straight
- * through to the Phaser canvas underneath without anyone hand-managing hit
- * regions, while buttons and the joystick still receive their own events.
+ * widget sets it back to `auto`. That is what makes click-to-move work: a tap
+ * on empty space falls straight through to the Phaser canvas and becomes a move
+ * order, while taps on buttons and panels are consumed by the UI.
+ *
+ * An active battle replaces the overworld interface entirely — the two share no
+ * screen space, so there's nothing to reconcile between them.
  */
 export function UIOverlay() {
   const phase = useGameStore((s) => s.phase);
+  const inBattle = useCombatStore((s) => s.battle !== null);
+
   const isPlaying = phase === 'playing';
 
   return (
@@ -24,12 +30,15 @@ export function UIOverlay() {
       <LoadingScreen />
       <SaveResetNotice />
 
-      {isPlaying && (
-        <>
-          <HUD />
-          <Joystick />
-          <ActionButton />
-        </>
+      {inBattle ? (
+        <CombatScreen />
+      ) : (
+        isPlaying && (
+          <>
+            <HUD />
+            <ActionButton />
+          </>
+        )
       )}
 
       <DialogModal />

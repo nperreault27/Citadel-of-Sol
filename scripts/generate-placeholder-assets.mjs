@@ -188,6 +188,66 @@ function buildPlayerSheet() {
   return encodePng(canvas.width, canvas.height, canvas.data);
 }
 
+// ── Combatant spritesheet ───────────────────────────────────────────────────
+
+const COMBATANT_W = 48;
+const COMBATANT_H = 56;
+
+/**
+ * One frame per combatant, in the order COMBATANT_FRAMES expects:
+ * Ivy, Saber, Cask, Ogre, Imp.
+ *
+ * Silhouettes differ in bulk and height as well as colour, so the party reads
+ * apart at a glance on a phone screen rather than relying on hue alone.
+ */
+function buildCombatantSheet() {
+  const canvas = createCanvas(COMBATANT_W * 5, COMBATANT_H);
+
+  const figures = [
+    // [body, trim, skin, width, height] — width/height in pixels of the torso block
+    [[96, 148, 104], [150, 196, 140], [236, 212, 180], 18, 24], // Ivy, slight chemist
+    [[186, 66, 74], [230, 120, 110], [235, 197, 162], 20, 26], // Saber, lean assassin
+    [[74, 104, 156], [126, 158, 200], [226, 190, 158], 30, 26], // Cask, broad gunner
+    [[104, 122, 78], [138, 156, 104], [128, 140, 92], 34, 34], // Ogre, hulking
+    [[128, 92, 156], [172, 132, 200], [186, 150, 210], 16, 18], // Imp, tiny
+  ];
+
+  figures.forEach(([body, trim, skin, bodyW, bodyH], index) => {
+    const ox = index * COMBATANT_W;
+    const centre = ox + Math.floor(COMBATANT_W / 2);
+
+    const headR = Math.max(5, Math.floor(bodyW / 3));
+    const bodyTop = COMBATANT_H - bodyH - 4;
+    const headTop = bodyTop - headR * 2;
+
+    // Contact shadow — grounds the figure so it doesn't float over the floor.
+    for (let x = -bodyW; x <= bodyW; x++) {
+      const halfWidth = bodyW * 0.7;
+      if (Math.abs(x) > halfWidth) continue;
+      const t = 1 - Math.abs(x) / halfWidth;
+      if (t > 0.15) canvas.set(centre + x, COMBATANT_H - 3, [0, 0, 0, 70]);
+      if (t > 0.5) canvas.set(centre + x, COMBATANT_H - 2, [0, 0, 0, 50]);
+    }
+
+    canvas.rect(centre - Math.floor(bodyW / 2), bodyTop, bodyW, bodyH, body);
+    canvas.rect(centre - Math.floor(bodyW / 2), bodyTop, bodyW, 3, trim);
+    canvas.rect(centre - Math.floor(bodyW / 2), bodyTop + bodyH - 4, bodyW, 4, [
+      Math.floor(body[0] * 0.6),
+      Math.floor(body[1] * 0.6),
+      Math.floor(body[2] * 0.6),
+    ]);
+
+    canvas.rect(centre - headR, headTop, headR * 2, headR * 2, skin);
+    canvas.rect(centre - headR, headTop, headR * 2, 3, trim);
+
+    // Eyes, one pixel pair, dark enough to read at any size.
+    canvas.rect(centre - headR + 2, headTop + headR, 2, 2, [26, 24, 30]);
+    canvas.rect(centre + headR - 4, headTop + headR, 2, 2, [26, 24, 30]);
+  });
+
+  return encodePng(canvas.width, canvas.height, canvas.data);
+}
+
 // ── Tiled map ───────────────────────────────────────────────────────────────
 
 const MAP_W = 40;
@@ -348,4 +408,5 @@ console.log('Generating placeholder assets...');
 write('public/assets/tilemaps/tileset.png', buildTileset());
 write('public/assets/tilemaps/overworld.json', JSON.stringify(buildMap(), null, 1));
 write('public/assets/sprites/player.png', buildPlayerSheet());
+write('public/assets/sprites/combatants.png', buildCombatantSheet());
 console.log('Done.');

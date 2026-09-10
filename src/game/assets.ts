@@ -23,13 +23,29 @@ export const AssetKeys = {
   tileset: 'terrain',
   tilemap: 'overworld',
   player: 'player',
+  combatants: 'combatants',
 } as const;
 
 export const AssetPaths = {
   tileset: 'tilemaps/tileset.png',
   tilemap: 'tilemaps/overworld.json',
   player: 'sprites/player.png',
+  combatants: 'sprites/combatants.png',
 } as const;
+
+/** Frame size of the arena combatant sheet. */
+export const COMBATANT_FRAME = { width: 48, height: 56 } as const;
+
+/** Which frame of `combatants.png` each combatant uses. */
+export const COMBATANT_FRAMES: Record<string, number> = {
+  ivy: 0,
+  saber: 1,
+  cask: 2,
+  ogre: 3,
+  imp1: 4,
+  // Both imps share a frame; only their ids differ.
+  imp2: 4,
+};
 
 /** Frame dimensions of the player spritesheet, one frame per facing. */
 export const PLAYER_FRAME = { width: 24, height: 32 } as const;

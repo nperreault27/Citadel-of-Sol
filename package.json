@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "assets:placeholder": "node scripts/generate-placeholder-assets.mjs",
+    "balance": "vitest run --config vitest.probe.config.ts --reporter=verbose",
     "cap:sync": "npm run build && cap sync android",
     "cap:open": "cap open android"
   },

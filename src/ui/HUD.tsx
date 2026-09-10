@@ -1,4 +1,5 @@
 import { useGameStore } from '@/state/useGameStore';
+import { getCombatActions } from '@/state/useCombatStore';
 import { EventBus } from '@/bridge/EventBus';
 
 /**
@@ -22,6 +23,20 @@ export function HUD() {
 
       <div className="hud__right">
         <span className="hud__items">{itemCount} items</span>
+
+        {/* Temporary entry point while the arena is the thing being built —
+            eventually a battle starts from an encounter in the world. */}
+        <button
+          type="button"
+          className="button button--ghost"
+          onClick={() => {
+            getCombatActions().startBattle();
+            EventBus.emit('arena:enter');
+          }}
+        >
+          Arena
+        </button>
+
         <button
           type="button"
           className="button button--ghost"

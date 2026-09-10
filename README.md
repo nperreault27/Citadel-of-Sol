@@ -25,6 +25,7 @@ browser's device emulation does not reproduce real touch behaviour.
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run assets:placeholder` | Regenerates placeholder art and the Tiled map |
+| `npm run balance` | Simulates 200 battles and reports win rate (see [Tuning](#tuning)) |
 | `npm run cap:sync` | Build, then copy web assets into the Android project |
 | `npm run cap:open` | Open the Android project in Android Studio |
 
@@ -38,26 +39,34 @@ job, and none of them imports React or Phaser:
 | Channel | File | Carries | Frequency |
 | --- | --- | --- | --- |
 | `EventBus` | `src/bridge/EventBus.ts` | Discrete events, both directions | A few per second |
-| `gameStore` | `src/state/store.ts` | Durable game state | On discrete events |
-| `inputState` | `src/bridge/inputState.ts` | Joystick axes | Every frame |
+| `gameStore` | `src/state/store.ts` | Durable overworld state | On discrete events |
+| `combatStore` | `src/state/combatStore.ts` | The current battle | On each card played |
 
 ### Rules that keep it fast
 
-1. **Phaser never writes to the store per frame.** Every store write re-renders subscribed
-   React components. Store writes are for discrete events — health changed, item gained.
-   Continuous values (player x/y, velocity, camera scroll) live in Phaser and are read off
-   the sprite at save time. `toSaveData()` takes position as an argument for this reason.
+1. **Phaser never writes to a store per frame.** Every store write re-renders subscribed
+   React components. Store writes are for discrete events — health changed, item gained,
+   card played. Continuous values (player x/y, velocity, camera scroll) live in Phaser and
+   are read off the sprite at save time. `toSaveData()` takes position as an argument for
+   this reason.
 
-2. **Per-frame input goes through `inputState`, not React state.** The joystick writes to a
-   plain mutable object and moves its knob by writing a transform straight to the DOM. Both
-   through `useState` would re-render on every `pointermove`.
+2. **Always pass a selector to `useGameStore` / `useCombatStore`.**
+   `useGameStore((s) => s.health)`, never `useGameStore()` — the latter subscribes the
+   component to every field.
 
-3. **Always pass a selector to `useGameStore`.** `useGameStore((s) => s.health)`, never
-   `useGameStore()` — the latter subscribes the component to every field.
+3. **Game rules live in `src/game/systems/` and `src/game/combat/`, neither of which
+   imports Phaser.** Scenes orchestrate; systems decide. That is what makes the logic
+   testable without a WebGL context — Phaser will not initialise under jsdom.
 
-4. **Game rules live in `src/game/systems/`, which never imports Phaser.** Scenes
-   orchestrate; systems decide. That is what makes the logic testable without a WebGL
-   context — Phaser will not initialise under jsdom.
+### Input is all clicks
+
+There is no joystick and no held gesture anywhere. The overworld is click-to-move: a tap
+runs A* (`src/game/systems/pathfinding.ts`) over the collision grid and the player walks
+the path. Tapping something interactable walks up to it and starts the conversation.
+Combat is tap a card, tap a target, tap End Turn.
+
+Pathfinding is not decoration — without it, a tap past a wall walks the player into it and
+they stick there.
 
 ### Layout
 
@@ -91,6 +100,132 @@ Tiled JSON: open it in [Tiled](https://www.mapeditor.org/), edit, and export ove
   properties.
 
 Set `physics.arcade.debug = true` in `src/game/config.ts` to see collision bodies.
+
+## Combat
+
+The engine is in `src/game/combat/` — pure TypeScript, no Phaser and no React, so the rules
+are testable and a battle replays identically from a seed. Every exported function is a
+transition that takes a `CombatState` and returns a new one.
+
+```
+player turn ─ tap card → (tap target) → resolve ─┐
+     ▲                                            │ repeat
+     │                                            ▼
+round++ ← stepEnemyTurn ×N ← queue enemies ← End Turn
+```
+
+**The enemy turn is stepped, not atomic.** `endPlayerTurn` only queues the living enemies
+and returns; `stepEnemyTurn` then resolves exactly one of them per call. The store drives
+that with a timer (`ENEMY_ACTION_DELAY_MS`), so each attack lands as its own store update and
+can be animated on its own. Resolving the whole turn in one call would be correct but
+unwatchable — three enemies would hit simultaneously and the health bars would jump once.
+
+Tests and the balance probe use `resolveEnemyTurn`, which loops the steps to completion.
+There is a test asserting stepped and atomic resolution reach byte-identical state, so pacing
+can never silently change the rules.
+
+**Decks.** All three equipped characters' decks shuffle into one shared draw pile, with
+each card tagged by its owner — playing it makes that character act and costs *their*
+stamina. Cards with `ownerId: null` are neutral team effects: no stamina, but they still
+need at least one character able to act. One hand of 5, one shared 5 energy per turn.
+
+**Turn order.** Speed decides which team goes first, summed across living members and
+settled once at the start of the battle. It does nothing else.
+
+**Stamina** (base 100) is spent by acting and drained by being hit. At 0 the character sits
+out the rest of the turn and refills completely during end-of-turn upkeep — so a forced
+rest costs exactly the remainder of one turn. Overspending is allowed and intentional: a
+heavy card can be played on a sliver of stamina.
+
+**Enemies** have no deck and no energy. Each picks from a weighted action list, and intents
+are deliberately not telegraphed. They do have stamina and can be staggered.
+
+### Animation
+
+The engine records a structured `CombatEvent[]` on `state.events` for every transition, and
+clears it on the next one. `ArenaScene` and the floating damage numbers animate from that
+list rather than by diffing state, because a diff cannot say *who* attacked, whether a hit
+was a poison tick, or whether Bleed doubled it.
+
+| Where | Shows |
+| --- | --- |
+| `HealthBar` | A pale ghost fill lags the real one by ~260ms — the gap between them is the damage just taken |
+| `StatusBadge` | An icon per status entry: stacks bottom-right, turns remaining top-left (omitted for statuses with no timer) |
+| `FloatingNumbers` | Rising numbers per combatant, coloured by kind, with `✦` marking a Bleed-doubled hit |
+| `ArenaScene` | Attacker lunges toward its target; target flashes and recoils (harder on Bleed); green pulse for poison; wobble when stamina is emptied |
+
+All of it collapses to near-instant under `prefers-reduced-motion`.
+
+### The party and their traits
+
+| | Trait | Basic (1) | Special (2) | Unique |
+| --- | --- | --- | --- | --- |
+| **Ivy** — The Chemist | Poison | Inject — damage + 1 Poison | Disperse — 2 Poison to all enemies | Cascade (2) — 1 Poison to all enemies, then every Poison lasts 1 turn longer |
+| **Saber** — The Assassin | Bleed | Sever — damage + 1 Bleed | Crossfade — AoE damage + 1 Bleed each | Exsanguinate (3) — discard your hand, one strike per card discarded |
+| **Cask** — The Blunderbuss | Stamina drain | Buckshot — damage + 40 stamina drain | Overdraw (1) — scales with missing stamina, refunds energy if it empties | Winded (3) — empty a target's stamina outright |
+
+**Poison** deals 5% of the victim's max health per stack at the end of their team's turn, and
+**ignores Defense entirely** — which is what makes Ivy the answer to high-Defense targets the
+rest of the party bounces off. Each application is its own 2-turn countdown, so a target hit
+on consecutive turns carries two stacks that expire separately. Poison does not drain stamina
+and does not consume Bleed.
+
+Cascade spreads and *lengthens* rather than detonating: it applies a stack to every enemy and
+then extends every Poison countdown by a turn — including the stack it just applied, which
+therefore lands at 3 turns rather than 2. Ivy's payoff is more ticks, not one burst.
+
+**Bleed** has no timer. It sits on a target until an attack consumes a stack, and that attack
+deals **double its final damage** — after Attack and Defense, so mitigation is applied first.
+An area attack eats one stack from *each* bleeding target it hits. Note that a card which both
+hits and applies Bleed does not double its own hit; the stack lands after.
+
+**Stamina drain** is Cask stealing turns rather than dealing damage. Draining an enemy to zero
+during your turn benches them for the whole of theirs, because the rest flag is only cleared
+in their own end-of-turn upkeep. Overdraw's bonus uses exponent 2, so a half-drained target
+yields only a quarter of the bonus — the card is weak on a fresh enemy and brutal on a worn
+one, which is what makes committing to the drain plan pay.
+
+### The formulas
+
+All constants live in one place, `src/game/combat/stats.ts`:
+
+```
+damage     = effectiveAttack × (power / 100) × 50 / (50 + defense)
+             × 2 if a Bleed stack is consumed
+effAttack  = baseAttack × (net ≥ 0 ? 1.3ⁿᵉᵗ : 0.7⁻ⁿᵉᵗ)
+net        = strength stacks − weakness stacks
+drain      = min(50%, 50% × (damage / maxHP ÷ 25%)²) of max stamina
+poison     = 5% × stacks of maxHP, ignoring Defense
+overdraw   = power + bonus × (missing stamina fraction)²
+```
+
+Card power is a **percentage of the attacker's Attack** — power 60 lands at 60% of their
+Attack before mitigation. Defense 50 halves incoming damage and never fully negates it.
+
+Strength and Weakness compound at ±30% per stack and last until the battle ends. They are
+netted to a single signed number *before* the multiplier is applied — multiplying 1.3 × 0.7
+gives 0.91, so cancelling at the multiplier level would leave a character permanently worse
+off after a buff and debuff meant to annul each other. `applyStatus` enforces this at
+application time, so the status row always shows the true net state.
+
+Stamina drain scales with the **fraction** of max health a hit represents, which is what
+makes high-health characters stagger less from the same absolute damage.
+
+### Tuning
+
+```bash
+npm run balance
+```
+
+Plays 200 seeded battles with a greedy AI and reports win rate, length and survivors. Run
+it after changing a stat or a card. The AI plays the first affordable card at the first
+legal target, so its win rate is a **ceiling on how easy** the fight is — 99% means trivial,
+but the AI losing does not prove the fight is hard.
+
+> Current content sits at a **95.5% win rate over a median 5 rounds, 2.64 of 3 surviving**.
+> That is a tuning question, not a bug: the numbers in `content.ts` exist to make the loop
+> playable, not balanced. The enemy group is the obvious lever — one ogre and two imps is a
+> thin test of three characters built around long-game attrition.
 
 ## Saves
 

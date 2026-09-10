@@ -5,7 +5,6 @@ import type { PluginListenerHandle } from '@capacitor/core';
 import { EventBus } from '@/bridge/EventBus';
 import { gameStore } from '@/state/store';
 import { saveService } from '@/save';
-import { resetMoveAxis } from '@/bridge/inputState';
 
 /**
  * Android hardware back button and app lifecycle.
@@ -57,10 +56,9 @@ export function useAndroidLifecycle(): void {
         if (isActive) return;
 
         // Backgrounding is the last reliable moment before Android may kill the
-        // process, so force any debounced write out now. Also zero the joystick:
-        // the pointer never gets a pointerup when the app is swiped away, and the
-        // player would otherwise return to find themselves still walking.
-        resetMoveAxis();
+        // process, so force any debounced write out now. Pausing also clears the
+        // active move path, so the player doesn't return to find themselves
+        // still walking somewhere they no longer remember tapping.
         void saveService.flush();
         EventBus.emit('ui:pause');
       })

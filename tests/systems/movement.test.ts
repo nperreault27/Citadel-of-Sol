@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyDeadzone, axesToVelocity, velocityToFacing } from '@/game/systems/movement';
+import { axesToVelocity, velocityToFacing } from '@/game/systems/movement';
 
 describe('axesToVelocity', () => {
   it('returns zero for no input', () => {
@@ -47,19 +47,17 @@ describe('velocityToFacing', () => {
   });
 });
 
-describe('applyDeadzone', () => {
-  it('zeroes input inside the deadzone', () => {
-    expect(applyDeadzone(0.1, 0.15)).toBe(0);
-    expect(applyDeadzone(-0.1, 0.15)).toBe(0);
+describe('axesToVelocity for click-to-move', () => {
+  it('steers at full speed toward a distant waypoint', () => {
+    // Callers pass a raw pixel delta, which is far outside the unit circle.
+    const velocity = axesToVelocity(300, 0, 140);
+    expect(velocity.x).toBeCloseTo(140, 5);
+    expect(velocity.y).toBeCloseTo(0, 5);
   });
 
-  it('still reaches full range at the extremes', () => {
-    expect(applyDeadzone(1, 0.15)).toBeCloseTo(1, 5);
-    expect(applyDeadzone(-1, 0.15)).toBeCloseTo(-1, 5);
-  });
-
-  it('rescales rather than clipping, so there is no jump at the boundary', () => {
-    // Just outside the deadzone should be near zero, not near 0.15.
-    expect(applyDeadzone(0.16, 0.15)).toBeLessThan(0.02);
+  it('keeps speed constant regardless of how far the waypoint is', () => {
+    const near = axesToVelocity(10, 10, 140);
+    const far = axesToVelocity(1000, 1000, 140);
+    expect(Math.hypot(near.x, near.y)).toBeCloseTo(Math.hypot(far.x, far.y), 5);
   });
 });
