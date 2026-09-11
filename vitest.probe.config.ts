@@ -22,5 +22,13 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/**/*.probe.ts'],
+
+    /*
+     * A probe plays thousands of battles to the end; the 5s default fails it
+     * partway through printing, which reads as a balance problem and is not
+     * one. Nothing here asserts, so a generous ceiling costs nothing — it only
+     * has to be long enough that a slow machine finishes the report.
+     */
+    testTimeout: 300_000,
   },
 });

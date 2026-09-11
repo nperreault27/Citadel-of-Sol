@@ -53,8 +53,10 @@ function foe(overrides: Partial<Combatant> = {}): Combatant {
 const CARDS: Record<string, CardDefinition> = {
   strike: {
     id: 'strike',
+    tier: 'basic',
     name: 'Strike',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 20,
@@ -63,8 +65,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   heavy: {
     id: 'heavy',
+    tier: 'basic',
     name: 'Heavy',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 100,
@@ -73,8 +77,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   buff: {
     id: 'buff',
+    tier: 'basic',
     name: 'Buff',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -83,8 +89,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   mend: {
     id: 'mend',
+    tier: 'basic',
     name: 'Mend',
     description: '',
+    brief: '',
     // Owned by the hero, not the ally — a downed character can't play their own
     // revive, so a card owned by the ally would be unplayable in exactly the
     // test that needs it.
@@ -96,8 +104,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   regroup: {
     id: 'regroup',
+    tier: 'basic',
     name: 'Regroup',
     description: '',
+    brief: '',
     ownerId: null,
     energyCost: 1,
     staminaCost: 0,

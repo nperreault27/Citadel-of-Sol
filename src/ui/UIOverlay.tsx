@@ -9,6 +9,7 @@ import { PauseMenu } from './PauseMenu';
 import { SaveResetNotice } from './SaveResetNotice';
 import { CombatScreen } from './combat/CombatScreen';
 import { RosterScreen } from './combat/RosterScreen';
+import { DeckScreen } from './combat/DeckScreen';
 
 /**
  * Everything drawn on top of the canvas.
@@ -25,9 +26,9 @@ export function UIOverlay() {
   const phase = useGameStore((s) => s.phase);
   const inBattle = useCombatStore((s) => s.battle !== null);
 
-  // Local, not in a store: nothing outside this component cares whether the
-  // party sheet happens to be open.
-  const [rosterOpen, setRosterOpen] = useState(false);
+  // Local, not in a store: nothing outside this component cares which pre-battle
+  // sheet happens to be open.
+  const [prep, setPrep] = useState<'none' | 'roster' | 'deck'>('none');
 
   const isPlaying = phase === 'playing';
 
@@ -41,9 +42,13 @@ export function UIOverlay() {
       ) : (
         isPlaying && (
           <>
-            <HUD onOpenRoster={() => setRosterOpen(true)} />
+            <HUD onOpenRoster={() => setPrep('roster')} />
             <ActionButton />
-            {rosterOpen && <RosterScreen onClose={() => setRosterOpen(false)} />}
+
+            {prep === 'roster' && (
+              <RosterScreen onClose={() => setPrep('none')} onBuildDeck={() => setPrep('deck')} />
+            )}
+            {prep === 'deck' && <DeckScreen onBack={() => setPrep('roster')} />}
           </>
         )
       )}

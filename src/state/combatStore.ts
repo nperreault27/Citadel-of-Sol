@@ -103,9 +103,11 @@ export const combatStore = createStore<CombatStoreState>()((set, get) => {
       cancelEnemyTurn();
       // The party comes from durable game state, so the deck is built from
       // whoever is currently equipped.
-      const party = gameStore.getState().party;
+      const { party, deck } = gameStore.getState();
       const battle =
-        seed === undefined ? createArenaBattle(party) : createArenaBattle(party, seed);
+        seed === undefined
+          ? createArenaBattle(party, deck)
+          : createArenaBattle(party, deck, seed);
 
       set({ battle, discardSelection: [] });
       if (battle.phase === 'enemyTurn') scheduleEnemyStep(ENEMY_TURN_LEAD_IN_MS);

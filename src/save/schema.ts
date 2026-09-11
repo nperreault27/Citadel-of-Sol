@@ -5,7 +5,7 @@ import { DEFAULT_PARTY } from '@/game/combat/content';
  * Bump this whenever the save shape changes, and add a matching entry to
  * `migrations.ts`. See that file for the contract.
  */
-export const CURRENT_SAVE_VERSION = 2;
+export const CURRENT_SAVE_VERSION = 3;
 
 export const saveDataSchema = z.object({
   version: z.number().int().positive(),
@@ -22,6 +22,9 @@ export const saveDataSchema = z.object({
 
   /** Ids of the equipped party, in display order. */
   party: z.array(z.string().min(1)),
+
+  /** The player's deck, as card definition id to number of copies. */
+  deck: z.record(z.string().min(1), z.number().int().positive()),
 
   world: z.object({
     mapKey: z.string().min(1),
@@ -52,6 +55,8 @@ export function createNewSave(): SaveData {
       maxHealth: 10,
     },
     party: [...DEFAULT_PARTY],
+    // New saves build their deck from nothing.
+    deck: {},
     world: {
       mapKey: 'overworld',
       visitedFlags: [],

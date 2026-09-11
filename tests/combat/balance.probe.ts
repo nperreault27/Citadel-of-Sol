@@ -1,5 +1,10 @@
 import { describe, it } from 'vitest';
-import { COMBAT_CONTENT, ROSTER, createArenaBattle } from '@/game/combat/content';
+import {
+  COMBAT_CONTENT,
+  ROSTER,
+  createArenaBattle,
+  defaultDeck,
+} from '@/game/combat/content';
 import {
   canPlayCard,
   cardDefOf,
@@ -113,7 +118,7 @@ describe('balance probe', () => {
       const survivors: number[] = [];
 
       for (let seed = 1; seed <= SEEDS; seed++) {
-        const result = playOut(createArenaBattle(party, seed));
+        const result = playOut(createArenaBattle(party, defaultDeck(party), seed));
         if (result.phase === 'victory') wins++;
         rounds.push(result.round);
         survivors.push(result.playerOrder.filter((id) => !result.combatants[id]?.downed).length);

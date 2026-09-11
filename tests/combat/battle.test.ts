@@ -6,6 +6,7 @@ import {
   ROSTER,
   characterById,
   createArenaBattle,
+  defaultDeck,
 } from '@/game/combat/content';
 import {
   canPlayCard,
@@ -94,7 +95,7 @@ function playOut(state: CombatState, maxRounds = 200): CombatState {
 
 describe('a full battle', () => {
   it('reaches a conclusion rather than stalling', () => {
-    const result = playOut(createArenaBattle(DEFAULT_PARTY, 1));
+    const result = playOut(createArenaBattle(DEFAULT_PARTY, defaultDeck(DEFAULT_PARTY), 1));
     expect(['victory', 'defeat']).toContain(result.phase);
   });
 
@@ -102,7 +103,7 @@ describe('a full battle', () => {
     // A deadlock that only appears on certain shuffles is exactly the kind of
     // bug that ships. Sweeping seeds is cheap insurance.
     for (let seed = 1; seed <= 25; seed++) {
-      const result = playOut(createArenaBattle(DEFAULT_PARTY, seed));
+      const result = playOut(createArenaBattle(DEFAULT_PARTY, defaultDeck(DEFAULT_PARTY), seed));
       expect(['victory', 'defeat'], `seed ${seed} stalled in ${result.phase}`).toContain(
         result.phase
       );
@@ -110,7 +111,7 @@ describe('a full battle', () => {
   });
 
   it('never leaves the hand over the limit once a turn has ended', () => {
-    let current = createArenaBattle(DEFAULT_PARTY, 7);
+    let current = createArenaBattle(DEFAULT_PARTY, defaultDeck(DEFAULT_PARTY), 7);
 
     for (let turn = 0; turn < 12; turn++) {
       if (current.phase === 'victory' || current.phase === 'defeat') break;
@@ -129,7 +130,7 @@ describe('a full battle', () => {
   });
 
   it('conserves every card across the piles', () => {
-    const start = createArenaBattle(DEFAULT_PARTY, 3);
+    const start = createArenaBattle(DEFAULT_PARTY, defaultDeck(DEFAULT_PARTY), 3);
     const total = start.drawPile.length + start.hand.length + start.discardPile.length;
 
     const end = playOut(start, 40);
@@ -148,7 +149,7 @@ describe('a full battle', () => {
     const enemySpeed = ENEMIES.reduce((sum, c) => sum + c.speed, 0);
 
     expect(partySpeed).toBeGreaterThan(enemySpeed);
-    expect(createArenaBattle(DEFAULT_PARTY, 1).activeTeam).toBe('player');
+    expect(createArenaBattle(DEFAULT_PARTY, defaultDeck(DEFAULT_PARTY), 1).activeTeam).toBe('player');
   });
 
   it('gives every enemy at least one defined action', () => {
@@ -166,6 +167,33 @@ describe('a full battle', () => {
       if (card.ownerId === null) continue;
       expect(ids.has(card.ownerId), `${card.id} has unknown owner ${card.ownerId}`).toBe(true);
     }
+  });
+
+  it('deals a battle from exactly the deck that was built', () => {
+    // The join between deck building and the engine: whatever the player chose
+    // is what gets shuffled, no more and no less.
+    const deck = { 'ivy.inject': 4, 'ivy.disperse': 2, 'saber.sever': 3, 'team.regroup': 4 };
+    const battle = createArenaBattle(['ivy', 'saber'], deck, 11);
+
+    const dealt = Object.values(battle.cards).map((card) => card.definitionId);
+    const counted: Record<string, number> = {};
+    for (const id of dealt) counted[id] = (counted[id] ?? 0) + 1;
+
+    expect(counted).toEqual(deck);
+    expect(dealt).toHaveLength(13);
+    // And every one of them is accounted for across the piles.
+    expect(battle.drawPile.length + battle.hand.length + battle.discardPile.length).toBe(13);
+  });
+
+  it('is reproducible from a deck regardless of how it was assembled', () => {
+    // Object key order must not leak into the shuffle.
+    const a = createArenaBattle(['ivy'], { 'ivy.inject': 4, 'team.regroup': 4 }, 5);
+    const b = createArenaBattle(['ivy'], { 'team.regroup': 4, 'ivy.inject': 4 }, 5);
+
+    const defsOf = (state: CombatState) =>
+      state.hand.map((id) => state.cards[id]?.definitionId).join(',');
+
+    expect(defsOf(a)).toBe(defsOf(b));
   });
 
   it('never lets a neutral card deal damage, which needs an attacker', () => {

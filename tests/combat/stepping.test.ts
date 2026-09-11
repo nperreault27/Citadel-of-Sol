@@ -43,8 +43,10 @@ function unit(overrides: Partial<Combatant> = {}): Combatant {
 const CARDS: Record<string, CardDefinition> = {
   strike: {
     id: 'strike',
+    tier: 'basic',
     name: 'Strike',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,

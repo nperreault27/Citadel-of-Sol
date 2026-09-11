@@ -53,8 +53,10 @@ function foe(overrides: Partial<Combatant> = {}): Combatant {
 const CARDS: Record<string, CardDefinition> = {
   goad: {
     id: 'goad',
+    tier: 'basic',
     name: 'Goad',
     description: '',
+    brief: '',
     ownerId: 'tank',
     energyCost: 1,
     staminaCost: 10,
@@ -63,8 +65,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   rebound: {
     id: 'rebound',
+    tier: 'basic',
     name: 'Rebound',
     description: '',
+    brief: '',
     ownerId: 'tank',
     energyCost: 1,
     staminaCost: 10,
@@ -73,8 +77,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   ironclad: {
     id: 'ironclad',
+    tier: 'basic',
     name: 'Ironclad',
     description: '',
+    brief: '',
     ownerId: 'tank',
     energyCost: 3,
     staminaCost: 10,
@@ -83,8 +89,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   strike: {
     id: 'strike',
+    tier: 'basic',
     name: 'Strike',
     description: '',
+    brief: '',
     ownerId: 'tank',
     energyCost: 1,
     staminaCost: 10,
@@ -93,8 +101,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   hex: {
     id: 'hex',
+    tier: 'basic',
     name: 'Hex',
     description: '',
+    brief: '',
     ownerId: 'tank',
     energyCost: 1,
     staminaCost: 10,

@@ -8,8 +8,9 @@ import {
   selectCard,
 } from '@/game/combat/engine';
 import { stacksOf } from '@/game/combat/status';
-import { fatigueMultiplier } from '@/game/combat/stats';
-import { buildDeck, DEFAULT_PARTY, ROSTER, characterById } from '@/game/combat/content';
+import { RESTING_DAMAGE_MULTIPLIER, computeDamage, fatigueMultiplier } from '@/game/combat/stats';
+import { defaultDeck, DEFAULT_PARTY, ROSTER, characterById } from '@/game/combat/content';
+import { expandDeck } from '@/game/combat/deckbuilding';
 import type {
   CardDefinition,
   Combatant,
@@ -49,8 +50,10 @@ function foe(overrides: Partial<Combatant> = {}): Combatant {
 const CARDS: Record<string, CardDefinition> = {
   cheap: {
     id: 'cheap',
+    tier: 'basic',
     name: 'Cheap',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 20,
@@ -59,8 +62,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   fatigueHit: {
     id: 'fatigueHit',
+    tier: 'basic',
     name: 'Dirge',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -69,8 +74,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   requiem: {
     id: 'requiem',
+    tier: 'basic',
     name: 'Requiem',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 2,
     staminaCost: 10,
@@ -81,8 +88,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   drain: {
     id: 'drain',
+    tier: 'basic',
     name: 'Buckshot',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -91,8 +100,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   forecast: {
     id: 'forecast',
+    tier: 'basic',
     name: 'Forecast',
     description: '',
+    brief: '',
     ownerId: null,
     energyCost: 0,
     staminaCost: 0,
@@ -101,8 +112,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   sift: {
     id: 'sift',
+    tier: 'basic',
     name: 'Sift',
     description: '',
+    brief: '',
     ownerId: null,
     energyCost: 1,
     staminaCost: 0,
@@ -111,8 +124,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   poultice: {
     id: 'poultice',
+    tier: 'basic',
     name: 'Poultice',
     description: '',
+    brief: '',
     ownerId: null,
     energyCost: 1,
     staminaCost: 0,
@@ -165,6 +180,43 @@ describe('fatigueMultiplier', () => {
 
   it('ignores other statuses', () => {
     expect(fatigueMultiplier([{ kind: 'poison', stacks: 5, duration: PERMANENT }])).toBe(1);
+  });
+});
+
+describe('damage against a resting character', () => {
+  it('lands harder than the same hit on a standing one', () => {
+    const attacker = hero({ attack: 100 });
+    const standing = foe({ defense: 0 });
+    const asleep = foe({ defense: 0, stamina: 0, resting: true });
+
+    const normal = computeDamage(attacker, standing, 100);
+    expect(computeDamage(attacker, asleep, 100)).toBe(
+      Math.round(normal * RESTING_DAMAGE_MULTIPLIER)
+    );
+  });
+
+  it('applies after Defense, so the increase is the same fraction for everyone', () => {
+    const attacker = hero({ attack: 100 });
+
+    // A wall and a glass cannon each take the same proportional punishment for
+    // being caught out, which is what putting it after mitigation buys.
+    for (const defense of [0, 30, 80]) {
+      const standing = foe({ defense });
+      const asleep = foe({ defense, stamina: 0, resting: true });
+
+      const normal = computeDamage(attacker, standing, 100);
+      const caught = computeDamage(attacker, asleep, 100);
+      expect(caught / normal).toBeCloseTo(RESTING_DAMAGE_MULTIPLIER, 1);
+    }
+  });
+
+  it('leaves a standing target alone', () => {
+    const attacker = hero({ attack: 100 });
+    const target = foe({ defense: 20 });
+
+    expect(computeDamage(attacker, target, 100)).toBe(
+      Math.round(attacker.attack * 1 * (50 / (50 + 20)))
+    );
   });
 });
 
@@ -425,35 +477,35 @@ describe('healPercent', () => {
 
 // ── Roster-driven decks ─────────────────────────────────────────────────────
 
-describe('buildDeck', () => {
-  it('only includes cards owned by the equipped party', () => {
-    const deck = buildDeck(['lyra']);
+describe('deck building against real content', () => {
+  it('only offers cards owned by the equipped party', () => {
+    const deck = defaultDeck(['lyra']);
 
-    expect(deck.some((id) => id.startsWith('lyra.'))).toBe(true);
-    expect(deck.some((id) => id.startsWith('ivy.'))).toBe(false);
-    expect(deck.some((id) => id.startsWith('bruno.'))).toBe(false);
+    expect(Object.keys(deck).some((id) => id.startsWith('lyra.'))).toBe(true);
+    expect(Object.keys(deck).some((id) => id.startsWith('ivy.'))).toBe(false);
+    expect(Object.keys(deck).some((id) => id.startsWith('bruno.'))).toBe(false);
   });
 
-  it('always includes the neutral cards', () => {
-    expect(buildDeck([]).every((id) => id.startsWith('team.'))).toBe(true);
-    expect(buildDeck([]).length).toBeGreaterThan(0);
+  it('always offers the neutral cards', () => {
+    expect(Object.keys(defaultDeck([])).every((id) => id.startsWith('team.'))).toBe(true);
+    expect(expandDeck(defaultDeck([])).length).toBeGreaterThan(0);
   });
 
   it('grows with each character equipped', () => {
-    const one = buildDeck(['ivy']).length;
-    const two = buildDeck(['ivy', 'saber']).length;
+    const one = expandDeck(defaultDeck(['ivy'])).length;
+    const two = expandDeck(defaultDeck(['ivy', 'saber'])).length;
     expect(two).toBeGreaterThan(one);
   });
 
   it('ignores an unknown id rather than throwing', () => {
-    // A save naming a character who no longer exists must not break a battle.
-    expect(() => buildDeck(['nobody'])).not.toThrow();
-    expect(buildDeck(['nobody'])).toEqual(buildDeck([]));
+    expect(() => defaultDeck(['nobody'])).not.toThrow();
+    expect(defaultDeck(['nobody'])).toEqual(defaultDeck([]));
   });
 
-  it('gives every roster member a deck', () => {
+  it('gives every roster member cards to bring', () => {
+    const neutralOnly = expandDeck(defaultDeck([])).length;
     for (const character of ROSTER) {
-      expect(buildDeck([character.id]).length).toBeGreaterThan(buildDeck([]).length);
+      expect(expandDeck(defaultDeck([character.id])).length).toBeGreaterThan(neutralOnly);
     }
   });
 

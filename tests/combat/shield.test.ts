@@ -46,8 +46,10 @@ function foe(overrides: Partial<Combatant> = {}): Combatant {
 const CARDS: Record<string, CardDefinition> = {
   ward: {
     id: 'ward',
+    tier: 'basic',
     name: 'Ward',
     description: '',
+    brief: '',
     ownerId: 'thane',
     energyCost: 1,
     staminaCost: 10,
@@ -56,8 +58,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   cover: {
     id: 'cover',
+    tier: 'basic',
     name: 'Cover',
     description: '',
+    brief: '',
     ownerId: 'thane',
     energyCost: 2,
     staminaCost: 10,
@@ -66,8 +70,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   brace: {
     id: 'brace',
+    tier: 'basic',
     name: 'Brace',
     description: '',
+    brief: '',
     ownerId: 'thane',
     energyCost: 0,
     staminaCost: 10,

@@ -31,6 +31,15 @@ export const POISON_DURATION_TURNS = 2;
 export const BLEED_MULTIPLIER = 2;
 
 /**
+ * Multiplier applied to an attack on a resting character.
+ *
+ * Resting is already a turn spent doing nothing; this makes it a turn spent
+ * being hit harder as well, so draining a character to zero is worth more than
+ * the tempo it buys. It is what makes Cask's whole plan pay.
+ */
+export const RESTING_DAMAGE_MULTIPLIER = 1.2;
+
+/**
  * Each Fatigue stack multiplies stamina loss by this, compounding.
  *
  * Compounding rather than additive so the game has one stacking rule: Strength
@@ -144,11 +153,20 @@ export function mitigation(defense: number): number {
  * Card power is a percentage of the attacker's effective Attack: power 60 lands
  * at 60% of their Attack, before the target's mitigation curve. Rounded to a
  * whole number, and never below 1 — a connecting hit should always do something.
+ *
+ * A resting target takes more. That is applied after mitigation rather than
+ * before, so it is a flat increase to what actually lands: being caught
+ * exhausted costs the same fraction of your health whether you are Hollis or
+ * Emrys, which is not true of anything that goes in ahead of the Defense curve.
+ *
+ * Poison does not go through here and is untouched by this on purpose — it is a
+ * clock running on its own, not a blow landing on a dropped guard.
  */
 export function computeDamage(attacker: Combatant, target: Combatant, power: number): number {
   const raw = effectiveAttack(attacker) * (power / 100);
   const mitigated = raw * mitigation(effectiveDefense(target));
-  return Math.max(1, Math.round(mitigated));
+  const caught = target.resting ? mitigated * RESTING_DAMAGE_MULTIPLIER : mitigated;
+  return Math.max(1, Math.round(caught));
 }
 
 /**

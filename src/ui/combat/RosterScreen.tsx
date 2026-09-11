@@ -1,8 +1,6 @@
 import { PARTY_SIZE, ROSTER } from '@/game/combat/content';
-import { EventBus } from '@/bridge/EventBus';
 import { gameStore } from '@/state/store';
 import { useGameStore } from '@/state/useGameStore';
-import { getCombatActions } from '@/state/useCombatStore';
 import { StatusIcon } from './StatusIcon';
 import type { StatusKind } from '@/game/combat/types';
 
@@ -29,7 +27,13 @@ const TRAITS: Record<string, { label: string; kind: StatusKind | null }> = {
  * The choice is written to `gameStore`, which is persisted, so a party survives
  * a force-quit.
  */
-export function RosterScreen({ onClose }: { onClose: () => void }) {
+export function RosterScreen({
+  onClose,
+  onBuildDeck,
+}: {
+  onClose: () => void;
+  onBuildDeck: () => void;
+}) {
   const party = useGameStore((s) => s.party);
   const full = party.length >= PARTY_SIZE;
 
@@ -68,6 +72,7 @@ export function RosterScreen({ onClose }: { onClose: () => void }) {
                 <button
                   type="button"
                   className={`recruit${equipped ? ' recruit--equipped' : ''}${locked ? ' recruit--locked' : ''}`}
+                  data-owner={character.id}
                   onClick={() => toggle(character.id)}
                   aria-pressed={equipped}
                 >
@@ -103,13 +108,9 @@ export function RosterScreen({ onClose }: { onClose: () => void }) {
             type="button"
             className="button"
             disabled={party.length === 0}
-            onClick={() => {
-              getCombatActions().startBattle();
-              EventBus.emit('arena:enter');
-              onClose();
-            }}
+            onClick={onBuildDeck}
           >
-            {party.length < PARTY_SIZE ? `Fight with ${party.length}` : 'Fight'}
+            Build deck
           </button>
 
           <button type="button" className="button button--secondary" onClick={onClose}>

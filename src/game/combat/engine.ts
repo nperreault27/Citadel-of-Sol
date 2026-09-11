@@ -127,6 +127,33 @@ export function cardDefOf(
   return content.cardDefs[instance.definitionId] ?? null;
 }
 
+/**
+ * The card's Power, or null if it doesn't hit.
+ *
+ * Power is a percentage of the user's Attack, not a damage number — Power 60
+ * lands at 60% of whoever plays it, so the same card reads differently in two
+ * different hands. That is exactly why it is worth showing.
+ *
+ * A card that hits more than once reports its strongest hit; none of them pair
+ * a headline attack with a bigger incidental one.
+ */
+export function cardPower(card: CardDefinition): number | null {
+  let strongest: number | null = null;
+
+  for (const effect of card.effects) {
+    if (
+      effect.type !== 'damage' &&
+      effect.type !== 'chainDamage' &&
+      effect.type !== 'discardHandAndAttack'
+    ) {
+      continue;
+    }
+    if (strongest === null || effect.power > strongest) strongest = effect.power;
+  }
+
+  return strongest;
+}
+
 function teamMembers(state: CombatState, team: Team): Combatant[] {
   const order = team === 'player' ? state.playerOrder : state.enemyOrder;
   return order.map((id) => state.combatants[id]).filter((c): c is Combatant => c !== undefined);

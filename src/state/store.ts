@@ -1,5 +1,6 @@
 import { createStore } from 'zustand/vanilla';
-import { DEFAULT_PARTY, PARTY_SIZE } from '@/game/combat/content';
+import { DEFAULT_PARTY, PARTY_SIZE, prunePlayerDeck } from '@/game/combat/content';
+import type { DeckList } from '@/game/combat/deckbuilding';
 import type { SaveData } from '@/save/schema';
 
 /**
@@ -46,6 +47,9 @@ export interface GameState {
   /** Ids of the three equipped characters. */
   party: string[];
 
+  /** The player's deck, as card definition id to copies. */
+  deck: DeckList;
+
   // ── Inventory ──
   inventory: InventoryEntry[];
 
@@ -64,6 +68,7 @@ export interface GameState {
   removeItem: (itemId: string, quantity?: number) => void;
   setFlag: (flag: string) => void;
   setParty: (party: string[]) => void;
+  setDeck: (deck: DeckList) => void;
   hasFlag: (flag: string) => boolean;
   openDialog: (speaker: string, lines: string[]) => void;
   advanceDialog: () => void;
@@ -81,6 +86,7 @@ export const gameStore = createStore<GameState>()((set, get) => ({
   mapKey: 'overworld',
   visitedFlags: [],
   party: [...DEFAULT_PARTY],
+  deck: {},
 
   inventory: [],
 
@@ -133,7 +139,15 @@ export const gameStore = createStore<GameState>()((set, get) => ({
 
   hasFlag: (flag) => get().visitedFlags.includes(flag),
 
-  setParty: (party) => set({ party: party.slice(0, PARTY_SIZE) }),
+  setParty: (party) =>
+    set((state) => {
+      const next = party.slice(0, PARTY_SIZE);
+      // Benching someone removes their cards straight away, rather than leaving
+      // an invalid deck to be discovered at the Fight button.
+      return { party: next, deck: prunePlayerDeck(state.deck, next) };
+    }),
+
+  setDeck: (deck) => set({ deck }),
 
   openDialog: (speaker, lines) => set({ dialog: { speaker, lines, lineIndex: 0 } }),
 
@@ -156,6 +170,7 @@ export const gameStore = createStore<GameState>()((set, get) => ({
       mapKey: save.world.mapKey,
       visitedFlags: [...save.world.visitedFlags],
       party: save.party.length > 0 ? [...save.party] : [...DEFAULT_PARTY],
+      deck: { ...save.deck },
       inventory: save.inventory.map((entry) => ({ ...entry })),
       saveWasReset: wasReset,
     }),
@@ -188,6 +203,7 @@ export function toSaveData(
       maxHealth: state.maxHealth,
     },
     party: [...state.party],
+    deck: { ...state.deck },
     world: {
       mapKey: state.mapKey,
       visitedFlags: [...state.visitedFlags],

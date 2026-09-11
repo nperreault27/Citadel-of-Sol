@@ -170,10 +170,29 @@ All of it collapses to near-instant under `prefers-reduced-motion`.
 | **Vesper** — The Vampire | Health as a resource | Bloodlet — pay 15% max HP for 85 power · Siphon — 60 power, heal half | Undying (2) — when an enemy falls, heal 50% or rise | — |
 | **Thane** — The Shielder | Shields | Ward — shield an ally for 25% of *his* max HP | Cover (2) — split 45% of his max HP across the team · Brace (0) — Defense Up | — |
 
-**Five characters, three equipped.** The roster screen picks the party, and `buildDeck()`
-assembles the draw pile from whoever is equipped plus the neutral cards — bench Lyra and her
-cards leave the pile entirely. That is what the owner tag on every card was for. The choice
-lives in `gameStore` and is persisted, so it survives a force-quit.
+**Nine characters, three equipped, and the deck is built by hand.** Flow is
+Arena → roster (pick 3) → deck builder → fight.
+
+The rules live in `src/game/combat/deckbuilding.ts` — pure, like the rest of `combat/`:
+
+- **At least 20 cards.** No upper bound; a bigger deck just makes your good cards rarer.
+- **At most 7 per character**, so equipping someone is a budget as well as a slot.
+- **Copies capped by tier**: basic 4, special 2, unique 1.
+- **Neutral cards are selectable and count** toward the 20. They cap at 4 each, so a legal
+  deck could be 16 neutrals and 4 character cards.
+
+Two consequences worth knowing. For a character with three cards `4 + 2 + 1 = 7` exactly, so
+maxing every card *is* the budget and there is no choice within them — **Hollis is the sole
+exception**, since his four cards allow nine copies against a budget of seven. And characters
+start **empty**: nothing is picked for the player.
+
+`availableCards()` is the seam for the planned card-discovery system. Today it returns
+everything the equipped characters own; later it intersects that with what has been found, and
+nothing else has to change.
+
+Party and deck both live in `gameStore` and are persisted. Benching a character runs
+`pruneToParty`, so their cards leave the deck immediately rather than failing at the Fight
+button.
 
 **Poison** deals 5% of the victim's max health per stack at the end of their team's turn, and
 **ignores Defense entirely** — which is what makes Ivy the answer to high-Defense targets the

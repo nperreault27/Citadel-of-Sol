@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import { COMBAT_CONTENT } from '@/game/combat/content';
 import { cardDefOf } from '@/game/combat/engine';
 import { pendingSelection } from '@/state/combatStore';
 import { getCombatActions, useCombatStore } from '@/state/useCombatStore';
+import { CardDetail, type InspectedCard } from './CardDetail';
 import { CardView } from './CardView';
+import { cardRowProps } from './cardRows';
 
 /**
  * The prompt for a card that is waiting on the player to pick a card.
@@ -18,6 +21,7 @@ import { CardView } from './CardView';
 export function SelectionStrip() {
   const battle = useCombatStore((s) => s.battle);
   const selection = useCombatStore(pendingSelection);
+  const [inspected, setInspected] = useState<InspectedCard | null>(null);
 
   if (!battle || !selection) return null;
 
@@ -26,29 +30,37 @@ export function SelectionStrip() {
       <div className="selection__panel">
         <p className="selection__prompt">{selection.prompt}</p>
 
-        <div className="selection__cards">
+        <div {...cardRowProps('selection__cards', selection.cards.length)}>
           {selection.cards.map((instanceId) => {
             const def = cardDefOf(battle, COMBAT_CONTENT, instanceId);
             if (!def) return null;
-
-            const owner = def.ownerId ? (battle.combatants[def.ownerId] ?? null) : null;
 
             return (
               <CardView
                 key={instanceId}
                 card={def}
-                owner={owner}
                 // Every choice is legal here — this is a pick, not a play, so
                 // energy and stamina are irrelevant.
                 playable
                 selected={false}
-                markedForDiscard={selection.kind === 'discardOne'}
+                // Nothing here is marked yet. Red means "this card is going",
+                // which is true of the one the player picks and of none of the
+                // ones they are picking between — the prompt above says which
+                // way the choice runs.
+                markedForDiscard={false}
+                // A line each, not the full rules: `discardOne` lays out the
+                // whole hand, and a wall of rules text is not how a player picks
+                // which card to bin. The hold is here too if they want it.
+                detail="brief"
+                onInspect={setInspected}
                 onClick={() => getCombatActions().chooseCard(instanceId)}
               />
             );
           })}
         </div>
       </div>
+
+      <CardDetail card={inspected} onDismiss={() => setInspected(null)} />
     </div>
   );
 }

@@ -198,10 +198,33 @@ export type CardEffect =
       split?: boolean;
     };
 
+/**
+ * How many copies of a card a deck may hold.
+ *
+ * Note that for a character with three cards these sum to exactly the
+ * seven-card budget, so maxing every card *is* spending the whole budget.
+ * Hollis is the exception: his four cards allow nine copies against a budget of
+ * seven, so he is the only character who has to cut something.
+ */
+export type CardTier = 'basic' | 'special' | 'unique';
+
 export interface CardDefinition {
   id: CardDefId;
   name: string;
   description: string;
+
+  /**
+   * The card in a few words, for where the full text will not fit — the deck
+   * builder shows a dozen cards at once and has room for a line each.
+   *
+   * It says what the card is for, not what it does exactly: numbers, stacks and
+   * edge cases belong in `description`, which is one hold away wherever this
+   * is shown.
+   */
+  brief: string;
+
+  /** Drives the per-card copy limit when deck building. */
+  tier: CardTier;
 
   /**
    * The character who acts when this card is played, or `null` for a neutral

@@ -15,6 +15,16 @@
 
 import { POISON_DURATION_TURNS } from './stats';
 import { createCombat, type CreateCombatOptions } from './engine';
+import {
+  availableCards,
+  canAddCopy,
+  countForCharacter,
+  defaultDeckFor,
+  expandDeck,
+  pruneToParty,
+  validateDeck,
+  type DeckList,
+} from './deckbuilding';
 import type {
   CardDefinition,
   Combatant,
@@ -147,7 +157,7 @@ export const BRUNO: Combatant = {
   name: 'Bruno',
   team: 'player',
   health: 230,
-  maxHealth: 230,
+  maxHealth: 150,
   stamina: 100,
   maxStamina: 100,
   attack: 120,
@@ -322,8 +332,10 @@ const CARD_LIST: CardDefinition[] = [
   // ══ Ivy — Poison ══
   {
     id: 'ivy.inject',
+    tier: 'basic',
     name: 'Inject',
     description: 'Deal damage and apply 1 Poison.',
+    brief: 'Damage and 1 Poison',
     ownerId: 'ivy',
     energyCost: 1,
     staminaCost: 20,
@@ -335,8 +347,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'ivy.disperse',
+    tier: 'special',
     name: 'Disperse',
     description: 'Apply 2 Poison to all enemies.',
+    brief: '2 Poison to all enemies',
     ownerId: 'ivy',
     energyCost: 2,
     staminaCost: 35,
@@ -347,8 +361,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'ivy.cascade',
+    tier: 'unique',
     name: 'Cascade',
     description: 'Apply 1 Poison to all enemies, then extend every Poison by 1 turn.',
+    brief: 'Poison all, then extend it',
     ownerId: 'ivy',
     energyCost: 2,
     staminaCost: 30,
@@ -364,8 +380,10 @@ const CARD_LIST: CardDefinition[] = [
   // ══ Saber — Bleed ══
   {
     id: 'saber.sever',
+    tier: 'basic',
     name: 'Sever',
     description: 'Deal damage and apply 1 Bleed.',
+    brief: 'Damage and 1 Bleed',
     ownerId: 'saber',
     energyCost: 1,
     staminaCost: 20,
@@ -377,8 +395,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'saber.crossfade',
+    tier: 'special',
     name: 'Crossfade',
     description: 'Deal damage to all enemies and apply 1 Bleed to each.',
+    brief: 'Damage and Bleed all',
     ownerId: 'saber',
     energyCost: 2,
     staminaCost: 40,
@@ -390,8 +410,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'saber.exsanguinate',
+    tier: 'unique',
     name: 'Exsanguinate',
     description: 'Discard your hand. Strike a random enemy for each card discarded.',
+    brief: 'Dump your hand to strike',
     ownerId: 'saber',
     energyCost: 3,
     staminaCost: 30,
@@ -403,8 +425,10 @@ const CARD_LIST: CardDefinition[] = [
   // ══ Cask — Stamina drain ══
   {
     id: 'cask.buckshot',
+    tier: 'basic',
     name: 'Buckshot',
     description: 'Deal damage and drain 40 stamina.',
+    brief: 'Damage and drain stamina',
     ownerId: 'cask',
     energyCost: 1,
     staminaCost: 25,
@@ -416,8 +440,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'cask.overdraw',
+    tier: 'special',
     name: 'Overdraw',
     description: 'Deals far more damage the more stamina the target is missing. Refunds 1 energy if it empties them.',
+    brief: 'Hits the winded hardest',
     ownerId: 'cask',
     energyCost: 1,
     staminaCost: 30,
@@ -435,8 +461,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'cask.winded',
+    tier: 'unique',
     name: 'Winded',
     description: "Empty a target's stamina completely.",
+    brief: 'Empty their stamina',
     ownerId: 'cask',
     energyCost: 3,
     staminaCost: 35,
@@ -448,8 +476,10 @@ const CARD_LIST: CardDefinition[] = [
   // ══ Lyra — Fatigue ══
   {
     id: 'lyra.refrain',
+    tier: 'basic',
     name: 'Refrain',
     description: 'Give one ally 1 Strength.',
+    brief: 'Give an ally Strength',
     ownerId: 'lyra',
     energyCost: 0,
     // Free in energy, so stamina is the only thing rationing it — about four
@@ -460,8 +490,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'lyra.dirge',
+    tier: 'special',
     name: 'Dirge',
     description: 'Apply 1 Fatigue to one enemy.',
+    brief: '1 Fatigue to one enemy',
     ownerId: 'lyra',
     energyCost: 1,
     staminaCost: 25,
@@ -470,8 +502,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'lyra.requiem',
+    tier: 'unique',
     name: 'Requiem',
     description: 'Apply 1 Fatigue to all enemies — or 3 if only one remains.',
+    brief: 'Fatigue every enemy',
     ownerId: 'lyra',
     energyCost: 2,
     staminaCost: 35,
@@ -490,8 +524,10 @@ const CARD_LIST: CardDefinition[] = [
   // ══ Bruno — raw damage ══
   {
     id: 'bruno.jab',
+    tier: 'basic',
     name: 'Jab',
     description: 'Deal damage to one enemy.',
+    brief: 'Damage one enemy',
     ownerId: 'bruno',
     energyCost: 1,
     staminaCost: 20,
@@ -500,8 +536,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'bruno.hook',
+    tier: 'special',
     name: 'Hook',
     description: 'Deal heavy damage to one enemy.',
+    brief: 'Heavy damage',
     ownerId: 'bruno',
     energyCost: 2,
     staminaCost: 50,
@@ -511,8 +549,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'bruno.haymaker',
+    tier: 'unique',
     name: 'Haymaker',
     description: 'Deal enormous damage. Bruno is spent for the rest of the turn.',
+    brief: 'Huge damage, then spent',
     ownerId: 'bruno',
     energyCost: 3,
     // Exactly his max stamina, so throwing this always benches him — that
@@ -525,8 +565,10 @@ const CARD_LIST: CardDefinition[] = [
   // ══ Hollis — defence ══
   {
     id: 'hollis.strike',
+    tier: 'basic',
     name: 'Strike',
     description: 'Deal damage to one enemy.',
+    brief: 'Damage one enemy',
     ownerId: 'hollis',
     energyCost: 1,
     staminaCost: 20,
@@ -536,8 +578,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'hollis.goad',
+    tier: 'special',
     name: 'Goad',
     description: 'Taunt +1. Single-target attacks must hit Hollis. Area attacks ignore it.',
+    brief: 'Pull attacks onto Hollis',
     ownerId: 'hollis',
     energyCost: 1,
     staminaCost: 20,
@@ -546,8 +590,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'hollis.rebound',
+    tier: 'special',
     name: 'Rebound',
     description: 'Gain 3 Counter Attack. Each spends a stack to strike back when attacked.',
+    brief: 'Strike back when hit',
     ownerId: 'hollis',
     energyCost: 1,
     staminaCost: 25,
@@ -556,8 +602,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'hollis.ironclad',
+    tier: 'unique',
     name: 'Ironclad',
     description: 'Take no damage until your next turn. Buffs and debuffs still apply.',
+    brief: 'Take no damage',
     ownerId: 'hollis',
     energyCost: 3,
     staminaCost: 40,
@@ -568,8 +616,10 @@ const CARD_LIST: CardDefinition[] = [
   // == Emrys - chain damage ==
   {
     id: 'emrys.bolt',
+    tier: 'basic',
     name: 'Bolt',
     description: 'Deal damage to one enemy.',
+    brief: 'Damage one enemy',
     ownerId: 'emrys',
     energyCost: 1,
     staminaCost: 20,
@@ -578,8 +628,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'emrys.arc',
+    tier: 'special',
     name: 'Arc',
     description: 'Strike an enemy, then keep arcing to any enemy while the lightning holds.',
+    brief: 'Lightning chains enemies',
     ownerId: 'emrys',
     energyCost: 2,
     staminaCost: 35,
@@ -600,8 +652,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'emrys.reserve',
+    tier: 'unique',
     name: 'Reserve',
     description: 'Restore 40 stamina to an ally. Puts an exhausted ally back on their feet.',
+    brief: "Restore an ally's stamina",
     ownerId: 'emrys',
     energyCost: 1,
     staminaCost: 15,
@@ -612,8 +666,10 @@ const CARD_LIST: CardDefinition[] = [
   // == Vesper - health as a resource ==
   {
     id: 'vesper.bloodlet',
+    tier: 'basic',
     name: 'Bloodlet',
     description: 'Pay 15% of your max health to strike hard.',
+    brief: 'Spend health to hit hard',
     ownerId: 'vesper',
     energyCost: 1,
     staminaCost: 20,
@@ -623,8 +679,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'vesper.siphon',
+    tier: 'special',
     name: 'Siphon',
     description: 'Deal damage and heal for half of it.',
+    brief: 'Damage and heal half',
     ownerId: 'vesper',
     energyCost: 1,
     staminaCost: 20,
@@ -633,8 +691,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'vesper.undying',
+    tier: 'unique',
     name: 'Undying',
     description: 'Gain 1 Undying. When an enemy falls, heal 50%, or rise if you are down.',
+    brief: 'Heal or rise on a kill',
     ownerId: 'vesper',
     energyCost: 2,
     staminaCost: 30,
@@ -645,8 +705,10 @@ const CARD_LIST: CardDefinition[] = [
   // == Thane - shields ==
   {
     id: 'thane.ward',
+    tier: 'basic',
     name: 'Ward',
     description: 'Shield an ally for 25% of your own max health.',
+    brief: 'Shield an ally',
     ownerId: 'thane',
     energyCost: 1,
     staminaCost: 25,
@@ -655,8 +717,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'thane.cover',
+    tier: 'special',
     name: 'Cover',
     description: 'Shield the whole team, splitting 45% of your max health between them.',
+    brief: 'Shield the whole team',
     ownerId: 'thane',
     energyCost: 2,
     staminaCost: 40,
@@ -665,8 +729,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'thane.brace',
+    tier: 'unique',
     name: 'Brace',
     description: 'Give one ally 1 Defense Up.',
+    brief: 'Give an ally Defense Up',
     ownerId: 'thane',
     energyCost: 0,
     staminaCost: 10,
@@ -677,8 +743,10 @@ const CARD_LIST: CardDefinition[] = [
   // ══ Neutral — no owner, no stamina, but the team must be able to act ══
   {
     id: 'team.regroup',
+    tier: 'basic',
     name: 'Regroup',
     description: 'Draw 2 cards.',
+    brief: 'Draw 2 cards',
     ownerId: null,
     energyCost: 1,
     staminaCost: 0,
@@ -687,8 +755,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'team.forecast',
+    tier: 'basic',
     name: 'Forecast',
     description: 'Look at the top 3 cards. Keep one, discard the rest.',
+    brief: 'Keep one of the top 3',
     ownerId: null,
     energyCost: 0,
     staminaCost: 0,
@@ -697,8 +767,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'team.sift',
+    tier: 'basic',
     name: 'Sift',
     description: 'Discard a card, then draw 2.',
+    brief: 'Discard 1, draw 2',
     ownerId: null,
     energyCost: 1,
     staminaCost: 0,
@@ -707,8 +779,10 @@ const CARD_LIST: CardDefinition[] = [
   },
   {
     id: 'team.poultice',
+    tier: 'basic',
     name: 'Poultice',
     description: "Restore 15% of an ally's max health. Revives a downed ally.",
+    brief: 'Heal or revive an ally',
     ownerId: null,
     energyCost: 1,
     staminaCost: 0,
@@ -722,51 +796,58 @@ export const CARD_DEFS: Record<string, CardDefinition> = Object.fromEntries(
 );
 
 /**
- * How many copies of each card a character contributes when equipped.
+ * The deck every save started with before deck building existed.
  *
- * Three of each basic, two of each special, one of each unique — so a typical
- * hand usually holds something playable for more than one character, and the
- * uniques feel like an occasion.
+ * Kept solely so the v2 to v3 save migration has something legal to hand an
+ * existing player: three basics, two specials and one unique per character plus
+ * six neutrals, which validates cleanly under the copy and budget caps. New
+ * saves start with an empty deck and build it themselves.
  */
-const CHARACTER_DECKS: Record<string, string[]> = {
-  ivy: [...repeat('ivy.inject', 3), ...repeat('ivy.disperse', 2), 'ivy.cascade'],
-  saber: [...repeat('saber.sever', 3), ...repeat('saber.crossfade', 2), 'saber.exsanguinate'],
-  cask: [...repeat('cask.buckshot', 3), ...repeat('cask.overdraw', 2), 'cask.winded'],
-  lyra: [...repeat('lyra.refrain', 3), ...repeat('lyra.dirge', 2), 'lyra.requiem'],
-  bruno: [...repeat('bruno.jab', 3), ...repeat('bruno.hook', 2), 'bruno.haymaker'],
-  // Four cards rather than three, but the same six-card share of the pile, so
-  // equipping Hollis doesn't crowd out the other two.
-  hollis: [...repeat('hollis.strike', 3), 'hollis.goad', 'hollis.rebound', 'hollis.ironclad'],
-  emrys: [...repeat('emrys.bolt', 3), ...repeat('emrys.arc', 2), 'emrys.reserve'],
-  vesper: [...repeat('vesper.bloodlet', 3), ...repeat('vesper.siphon', 2), 'vesper.undying'],
-  thane: [...repeat('thane.ward', 3), ...repeat('thane.cover', 2), 'thane.brace'],
+export const LEGACY_DEFAULT_DECK: DeckList = {
+  'ivy.inject': 3,
+  'ivy.disperse': 2,
+  'ivy.cascade': 1,
+  'saber.sever': 3,
+  'saber.crossfade': 2,
+  'saber.exsanguinate': 1,
+  'cask.buckshot': 3,
+  'cask.overdraw': 2,
+  'cask.winded': 1,
+  'team.regroup': 2,
+  'team.forecast': 2,
+  'team.sift': 1,
+  'team.poultice': 1,
 };
 
-/** Cards every deck gets, regardless of who is equipped. */
-const NEUTRAL_DECK: string[] = [
-  ...repeat('team.regroup', 2),
-  ...repeat('team.forecast', 2),
-  'team.sift',
-  'team.poultice',
-];
+// ── Deck-building helpers, bound to this game's cards ───────────────────────
+//
+// `deckbuilding.ts` takes card definitions as an argument so it stays free of
+// any dependency on content. These wrappers bind CARD_DEFS once so callers do
+// not have to thread it through every call.
 
-/**
- * Builds the shared draw pile from whoever is equipped.
- *
- * This is what the owner tag on every card was for: equip Lyra and her cards
- * enter the pile, bench her and they are gone. An unknown id contributes
- * nothing rather than throwing, so a stale save cannot break a battle.
- */
-export function buildDeck(equipped: readonly string[]): string[] {
-  const deck: string[] = [];
-  for (const id of equipped) {
-    deck.push(...(CHARACTER_DECKS[id] ?? []));
-  }
-  return [...deck, ...NEUTRAL_DECK];
+export function playerCardPool(party: readonly string[]) {
+  return availableCards(CARD_DEFS, party);
 }
 
-function repeat(id: string, times: number): string[] {
-  return Array.from({ length: times }, () => id);
+export function playerCanAddCopy(deck: DeckList, party: readonly string[], cardId: string) {
+  return canAddCopy(CARD_DEFS, deck, party, cardId);
+}
+
+export function playerDeckValidation(deck: DeckList, party: readonly string[]) {
+  return validateDeck(CARD_DEFS, deck, party);
+}
+
+export function playerCardsForCharacter(deck: DeckList, characterId: string) {
+  return countForCharacter(CARD_DEFS, deck, characterId);
+}
+
+export function prunePlayerDeck(deck: DeckList, party: readonly string[]) {
+  return pruneToParty(CARD_DEFS, deck, party);
+}
+
+/** A full legal deck for a party. For tests and the balance probe only. */
+export function defaultDeck(party: readonly string[]): DeckList {
+  return defaultDeckFor(CARD_DEFS, party);
 }
 
 // ── Enemy behaviour ─────────────────────────────────────────────────────────
@@ -825,6 +906,7 @@ export const COMBAT_CONTENT: CombatContent = {
  */
 export function createArenaBattle(
   equipped: readonly string[] = DEFAULT_PARTY,
+  deck: DeckList = LEGACY_DEFAULT_DECK,
   seed = Date.now() % 2147483647
 ): CombatState {
   const party = equipped
@@ -836,7 +918,7 @@ export function createArenaBattle(
 
   const options: CreateCombatOptions = {
     combatants: [...roster, ...ENEMIES],
-    deck: buildDeck(roster.map((character) => character.id)),
+    deck: expandDeck(deck),
     seed,
   };
 

@@ -46,8 +46,10 @@ function foe(overrides: Partial<Combatant> = {}): Combatant {
 const CARDS: Record<string, CardDefinition> = {
   arc: {
     id: 'arc',
+    tier: 'basic',
     name: 'Arc',
     description: '',
+    brief: '',
     ownerId: 'caster',
     energyCost: 2,
     staminaCost: 10,
@@ -56,8 +58,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   arcOnce: {
     id: 'arcOnce',
+    tier: 'basic',
     name: 'Arc Once',
     description: '',
+    brief: '',
     ownerId: 'caster',
     energyCost: 2,
     staminaCost: 10,
@@ -67,8 +71,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   arcAlways: {
     id: 'arcAlways',
+    tier: 'basic',
     name: 'Arc Always',
     description: '',
+    brief: '',
     ownerId: 'caster',
     energyCost: 2,
     staminaCost: 10,
@@ -78,8 +84,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   reserve: {
     id: 'reserve',
+    tier: 'basic',
     name: 'Reserve',
     description: '',
+    brief: '',
     ownerId: 'caster',
     energyCost: 1,
     staminaCost: 5,
@@ -88,8 +96,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   bloodlet: {
     id: 'bloodlet',
+    tier: 'basic',
     name: 'Bloodlet',
     description: '',
+    brief: '',
     ownerId: 'caster',
     energyCost: 1,
     staminaCost: 10,
@@ -99,8 +109,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   siphon: {
     id: 'siphon',
+    tier: 'basic',
     name: 'Siphon',
     description: '',
+    brief: '',
     ownerId: 'caster',
     energyCost: 1,
     staminaCost: 10,
@@ -109,8 +121,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   undying: {
     id: 'undying',
+    tier: 'basic',
     name: 'Undying',
     description: '',
+    brief: '',
     ownerId: 'caster',
     energyCost: 2,
     staminaCost: 10,
@@ -119,8 +133,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   finisher: {
     id: 'finisher',
+    tier: 'basic',
     name: 'Finisher',
     description: '',
+    brief: '',
     ownerId: 'ally',
     energyCost: 1,
     staminaCost: 10,

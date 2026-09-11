@@ -1,27 +1,48 @@
+import { useState } from 'react';
 import { EventBus } from '@/bridge/EventBus';
 import { COMBAT_CONTENT } from '@/game/combat/content';
 import { canPlayCard, cardDefOf, legalTargets } from '@/game/combat/engine';
 import { discardsRequired, isEnemyTurn } from '@/state/combatStore';
 import { getCombatActions, useCombatStore } from '@/state/useCombatStore';
 import type { CombatState } from '@/game/combat/types';
+import { CardDetail, type InspectedCard } from './CardDetail';
 import { CardView } from './CardView';
+import { cardRowProps } from './cardRows';
 import { CombatantPanel } from './CombatantPanel';
 import { SelectionStrip } from './SelectionStrip';
 
 /**
  * The whole combat interface, drawn over the ArenaScene canvas.
  *
- * Everything here is click-driven: tap a card to pick it, tap a combatant to
- * aim it, tap End Turn to pass. No held gestures anywhere.
+ * Everything that changes the battle is a tap: tap a card to pick it, tap a
+ * combatant to aim it, tap End Turn to pass. The one held gesture reads rather
+ * than acts — holding a card in hand blows it up so its rules text can be read,
+ * and releasing puts it back without playing it.
  */
+/** Which status label is showing. One at a time, screen-wide. */
+interface OpenTip {
+  combatantId: string;
+  index: number;
+}
+
 export function CombatScreen() {
   const battle = useCombatStore((s) => s.battle);
+  const [tip, setTip] = useState<OpenTip | null>(null);
+
   if (!battle) return null;
+
+  // Opening one closes whatever was open, including itself.
+  const toggleTip = (combatantId: string, index: number) =>
+    setTip((open) =>
+      open && open.combatantId === combatantId && open.index === index
+        ? null
+        : { combatantId, index },
+    );
 
   return (
     <div className="combat">
-      <EnemyRow battle={battle} />
-      <PartyRow battle={battle} />
+      <EnemyRow battle={battle} tip={tip} onToggleTip={toggleTip} />
+      <PartyRow battle={battle} tip={tip} onToggleTip={toggleTip} />
       <BottomBar battle={battle} />
       <SelectionStrip />
       <Banner battle={battle} />
@@ -31,12 +52,23 @@ export function CombatScreen() {
 
 // ── Rows of combatants ──────────────────────────────────────────────────────
 
+interface RowProps {
+  battle: CombatState;
+  tip: OpenTip | null;
+  onToggleTip: (combatantId: string, index: number) => void;
+}
+
+/** The open label's index for one combatant, or null if it isn't theirs. */
+function tipFor(tip: OpenTip | null, combatantId: string): number | null {
+  return tip && tip.combatantId === combatantId ? tip.index : null;
+}
+
 function targetSetFor(battle: CombatState): Set<string> {
   if (battle.phase !== 'selectTarget' || !battle.pendingCard) return new Set();
   return new Set(legalTargets(battle, COMBAT_CONTENT, battle.pendingCard));
 }
 
-function EnemyRow({ battle }: { battle: CombatState }) {
+function EnemyRow({ battle, tip, onToggleTip }: RowProps) {
   const targets = targetSetFor(battle);
 
   return (
@@ -51,6 +83,8 @@ function EnemyRow({ battle }: { battle: CombatState }) {
             compact
             targetable={targets.has(id)}
             onSelect={(target) => getCombatActions().pickTarget(target)}
+            openStatus={tipFor(tip, id)}
+            onToggleStatus={(index) => onToggleTip(id, index)}
           />
         );
       })}
@@ -58,7 +92,7 @@ function EnemyRow({ battle }: { battle: CombatState }) {
   );
 }
 
-function PartyRow({ battle }: { battle: CombatState }) {
+function PartyRow({ battle, tip, onToggleTip }: RowProps) {
   const targets = targetSetFor(battle);
 
   return (
@@ -72,6 +106,8 @@ function PartyRow({ battle }: { battle: CombatState }) {
             combatant={combatant}
             targetable={targets.has(id)}
             onSelect={(target) => getCombatActions().pickTarget(target)}
+            openStatus={tipFor(tip, id)}
+            onToggleStatus={(index) => onToggleTip(id, index)}
           />
         );
       })}
@@ -84,6 +120,7 @@ function PartyRow({ battle }: { battle: CombatState }) {
 function BottomBar({ battle }: { battle: CombatState }) {
   const discardSelection = useCombatStore((s) => s.discardSelection);
   const needed = useCombatStore(discardsRequired);
+  const [inspected, setInspected] = useState<InspectedCard | null>(null);
 
   const enemyActing = useCombatStore(isEnemyTurn);
 
@@ -137,23 +174,23 @@ function BottomBar({ battle }: { battle: CombatState }) {
         </div>
       )}
 
-      <div className="combat__hand">
+      <div {...cardRowProps('combat__hand', battle.hand.length)}>
         {battle.hand.map((instanceId) => {
           const def = cardDefOf(battle, COMBAT_CONTENT, instanceId);
           if (!def) return null;
 
-          const owner = def.ownerId ? (battle.combatants[def.ownerId] ?? null) : null;
           const check = canPlayCard(battle, COMBAT_CONTENT, instanceId);
 
           return (
             <CardView
               key={instanceId}
               card={def}
-              owner={owner}
               playable={isDiscarding ? true : check.ok}
               blockedReason={isDiscarding ? undefined : check.reason}
               selected={battle.pendingCard === instanceId}
               markedForDiscard={discardSelection.includes(instanceId)}
+              detail="compact"
+              onInspect={setInspected}
               onClick={() => {
                 if (isDiscarding) actions.toggleDiscard(instanceId);
                 else actions.playCard(instanceId);
@@ -162,6 +199,8 @@ function BottomBar({ battle }: { battle: CombatState }) {
           );
         })}
       </div>
+
+      <CardDetail card={inspected} onDismiss={() => setInspected(null)} />
 
       {!isDiscarding && (
         <button

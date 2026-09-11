@@ -1,4 +1,4 @@
-import { DEFAULT_PARTY } from '@/game/combat/content';
+import { DEFAULT_PARTY, LEGACY_DEFAULT_DECK } from '@/game/combat/content';
 import { CURRENT_SAVE_VERSION } from './schema';
 
 /**
@@ -24,6 +24,12 @@ export type Migration = (data: Record<string, unknown>) => Record<string, unknow
 export const migrations: Record<number, Migration> = {
   /** v2 added the equipped party. Saves from v1 get the starting three. */
   1: (data) => ({ ...data, party: [...DEFAULT_PARTY] }),
+
+  /**
+   * v3 added the player-built deck. An existing save gets the fixed deck it was
+   * already effectively playing, rather than an empty one that cannot fight.
+   */
+  2: (data) => ({ ...data, deck: { ...LEGACY_DEFAULT_DECK } }),
 };
 
 /**

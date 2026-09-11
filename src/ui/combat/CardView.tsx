@@ -1,53 +1,84 @@
-import type { CardDefinition, Combatant } from '@/game/combat/types';
+import type { CardDefinition } from '@/game/combat/types';
+import type { InspectedCard } from './CardDetail';
+import { CardFace, faceClass, type FaceDetail } from './CardFace';
+import { useHoldToInspect } from './useHoldToInspect';
 
 interface Props {
   card: CardDefinition;
-  owner: Combatant | null;
   playable: boolean;
   /** Why it can't be played, shown under the card when blocked. */
   blockedReason?: string | undefined;
   selected: boolean;
   markedForDiscard: boolean;
+  /** How much of the face to draw — see `CardFace`. */
+  detail?: FaceDetail;
+  /** Called with this card while it is held down, and with null on release. */
+  onInspect?: (card: InspectedCard | null) => void;
   onClick: () => void;
 }
 
 /**
  * One card in hand.
  *
- * Shows both costs, because they come out of different pools: energy is the
- * shared team budget for the turn, stamina is the owning character's own and is
- * what forces them to rest. A neutral card shows no owner and no stamina.
+ * The face itself comes from CardFace, shared with the deck builder; this adds
+ * only the combat-specific state — playable, selected, marked for discard — and
+ * the button wrapper.
+ *
+ * Tap plays it, hold shows it. A compact card has no room to say why it can't
+ * be played, so that reason travels with the hold instead.
+ *
+ * The face is the same object at every size: what changes is how much of it is
+ * drawn, which is `detail`'s job, not this one's.
  */
 export function CardView({
   card,
-  owner,
   playable,
   blockedReason,
   selected,
   markedForDiscard,
+  detail = 'full',
+  onInspect,
   onClick,
 }: Props) {
-  const classes = ['card', playable ? '' : 'card--blocked', selected ? 'card--selected' : '', markedForDiscard ? 'card--discarding' : '']
+  const hold = useHoldToInspect((holding) => {
+    if (!onInspect) return;
+    onInspect(holding ? { card, blockedReason } : null);
+  });
+
+  const classes = [
+    'card',
+    faceClass(detail),
+    playable ? '' : 'card--blocked',
+    selected ? 'card--selected' : '',
+    markedForDiscard ? 'card--discarding' : '',
+  ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <button type="button" className={classes} onClick={onClick} title={blockedReason ?? card.description}>
-      <span className="card__head">
-        <span className="card__owner">{owner ? owner.name : 'Team'}</span>
-        <span className="card__energy" aria-label={`${card.energyCost} energy`}>
-          {card.energyCost}
-        </span>
-      </span>
+    <button
+      type="button"
+      className={classes}
+      // Drives the owner's colour, which the cascade resolves — see globals.css.
+      data-owner={card.ownerId ?? 'team'}
+      onClick={() => {
+        // The player was reading, not playing.
+        if (hold.consumeHold()) return;
+        onClick();
+      }}
+      onPointerDown={hold.onPointerDown}
+      onPointerMove={hold.onPointerMove}
+      onPointerUp={hold.onPointerUp}
+      onPointerLeave={hold.onPointerLeave}
+      onPointerCancel={hold.onPointerCancel}
+      onContextMenu={hold.onContextMenu}
+      title={blockedReason ?? card.description}
+    >
+      <CardFace card={card} detail={detail} />
 
-      <span className="card__name">{card.name}</span>
-      <span className="card__text">{card.description}</span>
-
-      <span className="card__foot">
-        {card.staminaCost > 0 ? <span className="card__stamina">{card.staminaCost} stam</span> : <span className="card__stamina card__stamina--none">no stamina</span>}
-      </span>
-
-      {!playable && blockedReason && <span className="card__blocked">{blockedReason}</span>}
+      {detail !== 'compact' && !playable && blockedReason && (
+        <span className="card__blocked">{blockedReason}</span>
+      )}
     </button>
   );
 }

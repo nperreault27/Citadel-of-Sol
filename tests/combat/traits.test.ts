@@ -53,8 +53,10 @@ function foe(overrides: Partial<Combatant> = {}): Combatant {
 const CARDS: Record<string, CardDefinition> = {
   poisonHit: {
     id: 'poisonHit',
+    tier: 'basic',
     name: 'Inject',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -63,8 +65,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   cascade: {
     id: 'cascade',
+    tier: 'basic',
     name: 'Cascade',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -77,8 +81,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   bleedHit: {
     id: 'bleedHit',
+    tier: 'basic',
     name: 'Sever',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -90,8 +96,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   plainHit: {
     id: 'plainHit',
+    tier: 'basic',
     name: 'Jab',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -100,8 +108,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   aoeHit: {
     id: 'aoeHit',
+    tier: 'basic',
     name: 'Sweep',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -110,8 +120,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   drain: {
     id: 'drain',
+    tier: 'basic',
     name: 'Buckshot',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -120,8 +132,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   winded: {
     id: 'winded',
+    tier: 'basic',
     name: 'Winded',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -130,8 +144,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   overdraw: {
     id: 'overdraw',
+    tier: 'basic',
     name: 'Overdraw',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,
@@ -143,8 +159,10 @@ const CARDS: Record<string, CardDefinition> = {
   },
   exsanguinate: {
     id: 'exsanguinate',
+    tier: 'basic',
     name: 'Exsanguinate',
     description: '',
+    brief: '',
     ownerId: 'hero',
     energyCost: 1,
     staminaCost: 10,

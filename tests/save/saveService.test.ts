@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SaveService, SAVE_KEY } from '@/save';
 import { createMemoryAdapter } from '@/save/memoryAdapter';
 import { CURRENT_SAVE_VERSION, createNewSave } from '@/save/schema';
+import { validateDeck } from '@/game/combat/deckbuilding';
+import { CARD_DEFS } from '@/game/combat/content';
 
 beforeEach(() => {
   // The service warns on every rejected save; that's correct behaviour in the
@@ -123,6 +125,50 @@ describe('migrating a v1 save', () => {
     const service = new SaveService(createMemoryAdapter({ [SAVE_KEY]: broken }));
 
     return service.load().then(({ wasReset }) => expect(wasReset).toBe(true));
+  });
+});
+
+describe('migrating a v2 save', () => {
+  it('hands an existing player a deck rather than stranding them', async () => {
+    // v2 had a party but no deck. Migrating to an empty deck would leave them
+    // unable to start a battle at all.
+    const v2 = JSON.stringify({
+      version: 2,
+      savedAt: 1,
+      player: { x: 100, y: 100, facing: 'down', health: 9, maxHealth: 10 },
+      party: ['ivy', 'saber', 'cask'],
+      world: { mapKey: 'overworld', visitedFlags: [] },
+      inventory: [],
+    });
+
+    const service = new SaveService(createMemoryAdapter({ [SAVE_KEY]: v2 }));
+    const { data, wasReset } = await service.load();
+
+    expect(wasReset).toBe(false);
+    expect(data.version).toBe(CURRENT_SAVE_VERSION);
+    expect(data.party).toEqual(['ivy', 'saber', 'cask']);
+
+    // And what arrives is a deck they can actually fight with.
+    expect(validateDeck(CARD_DEFS, data.deck, data.party).ok).toBe(true);
+  });
+
+  it('carries a v1 save all the way to the current version', async () => {
+    // Two migrations in sequence: v1 gains a party, then v2 gains a deck.
+    const v1 = JSON.stringify({
+      version: 1,
+      savedAt: 1,
+      player: { x: 64, y: 64, facing: 'up', health: 10, maxHealth: 10 },
+      world: { mapKey: 'overworld', visitedFlags: ['signpost'] },
+      inventory: [],
+    });
+
+    const service = new SaveService(createMemoryAdapter({ [SAVE_KEY]: v1 }));
+    const { data, wasReset } = await service.load();
+
+    expect(wasReset).toBe(false);
+    expect(data.version).toBe(CURRENT_SAVE_VERSION);
+    expect(data.world.visitedFlags).toEqual(['signpost']);
+    expect(validateDeck(CARD_DEFS, data.deck, data.party).ok).toBe(true);
   });
 });
 

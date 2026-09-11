@@ -15,6 +15,34 @@
   --accent: #d8a657;
   --danger: #d2544f;
 
+  /*
+   * Character colours — each one taken off the character's own sprite.
+   *
+   * These are the trim values from the figure table in
+   * `scripts/generate-placeholder-assets.mjs`: the highlight band across each
+   * fighter's outfit. The body colour underneath is the same hue but too dark
+   * to read as a stripe or a label on this background, so the trim stands in
+   * for the outfit. Re-colour a fighter there and these have to follow, or the
+   * card stops matching the person who plays it.
+   *
+   * Carried by `data-owner` and read straight out of the cascade — no component
+   * looks a colour up. Whatever wears the attribute picks up `--card-accent`: a
+   * card in hand, the same card in the deck builder, the fighter's panel in the
+   * arena, their row in the roster.
+   */
+  --char-ivy: #96c48c;
+  --char-saber: #e6786e;
+  --char-cask: #7e9ec8;
+  --char-lyra: #bea6d6;
+  --char-bruno: #deb260;
+  --char-hollis: #9ca2b0;
+  --char-emrys: #7c98d8;
+  --char-vesper: #ba4a60;
+  --char-thane: #82b4c4;
+
+  /* Neutral: team cards, and anything with no character behind it. */
+  --card-accent: var(--ink-dim);
+
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
@@ -25,6 +53,34 @@
 
 * {
   box-sizing: border-box;
+}
+
+[data-owner='ivy'] {
+  --card-accent: var(--char-ivy);
+}
+[data-owner='saber'] {
+  --card-accent: var(--char-saber);
+}
+[data-owner='cask'] {
+  --card-accent: var(--char-cask);
+}
+[data-owner='lyra'] {
+  --card-accent: var(--char-lyra);
+}
+[data-owner='bruno'] {
+  --card-accent: var(--char-bruno);
+}
+[data-owner='hollis'] {
+  --card-accent: var(--char-hollis);
+}
+[data-owner='emrys'] {
+  --card-accent: var(--char-emrys);
+}
+[data-owner='vesper'] {
+  --card-accent: var(--char-vesper);
+}
+[data-owner='thane'] {
+  --card-accent: var(--char-thane);
 }
 
 html,
@@ -58,13 +114,43 @@ body {
   /* Stops the pull-to-refresh gesture and the rubber-band overscroll glow. */
   overscroll-behavior: none;
 
-  /* No pinch-zoom or double-tap-zoom; the game owns all gestures. */
-  touch-action: none;
+  /*
+   * No pinch-zoom or double-tap-zoom, which is what this rule is for — but
+   * `none` also refuses to pan, and panning is how a finger scrolls the deck
+   * builder and the roster. `pan-x pan-y` keeps the zoom gestures out and lets
+   * the scrolling panels work; the canvas still declares its own `none`, so
+   * the game itself swallows everything as before.
+   */
+  touch-action: pan-x pan-y;
 }
 
 canvas {
   display: block; /* removes the inline-element baseline gap under the canvas */
   touch-action: none;
+}
+
+/*
+ * Every panel that scrolls, scrolls by drag.
+ *
+ * A track down the edge is a desktop control: at thumb size it is too thin to
+ * grab, and it advertises an interaction the player will never use. The panels
+ * still scroll exactly as before — this hides the indicator, nothing else.
+ *
+ * `scrollbar-width` is the standard property; the WebKit pseudo-element behind
+ * it covers WebViews older than that support.
+ */
+.deck__scroll,
+.roster__list,
+.selection__cards,
+.card-detail__stack {
+  scrollbar-width: none;
+}
+
+.deck__scroll::-webkit-scrollbar,
+.roster__list::-webkit-scrollbar,
+.selection__cards::-webkit-scrollbar,
+.card-detail__stack::-webkit-scrollbar {
+  display: none;
 }
 
 /* ── Layers ──────────────────────────────────────────────────────────────── */
@@ -386,7 +472,7 @@ canvas {
 
 /* Not a legal target: still readable, just not clickable. Kept at full opacity
    because these panels are the player's only view of health and stamina. */
-.unit:disabled {
+.unit[aria-disabled='true'] {
   opacity: 1;
   cursor: default;
 }
@@ -398,9 +484,19 @@ canvas {
 
 .unit--targetable {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 0 14px rgba(216, 166, 87, 0.35);
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 14px rgba(216, 166, 87, 0.35);
   cursor: pointer;
   transform: translateY(-2px);
+}
+
+/* An ally lights up as themselves. Enemies have no colour, so they stay gold. */
+.unit[data-owner].unit--targetable {
+  border-color: var(--card-accent);
+  box-shadow:
+    0 0 0 1px var(--card-accent),
+    0 0 14px color-mix(in srgb, var(--card-accent) 40%, transparent);
 }
 
 .unit--downed {
@@ -417,6 +513,45 @@ canvas {
   align-items: baseline;
   justify-content: space-between;
   gap: 4px;
+}
+
+/* Only the party carries a colour; enemies have no attribute and stay neutral. */
+.unit[data-owner] {
+  border-color: color-mix(in srgb, var(--card-accent) 34%, var(--panel-border));
+}
+
+.unit[data-owner] .unit__name {
+  color: var(--card-accent);
+}
+
+/*
+ * What the `title` says, for a screen with no hover to say it on.
+ *
+ * Pinned to the panel's own edges rather than centred on the badge that asked
+ * for it: the panel cannot leave the screen, so neither can this. Transparent
+ * to input so the tap that closes it reaches the badge underneath.
+ */
+.unit__tip {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  right: 3px;
+  z-index: 2;
+
+  padding: 4px 6px;
+
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: rgba(11, 14, 20, 0.97);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--ink);
+  text-align: center;
+
+  pointer-events: none;
 }
 
 .unit__name {
@@ -526,7 +661,15 @@ canvas {
   width: 20px;
   height: 20px;
   flex: 0 0 auto;
+  cursor: pointer;
+  touch-action: manipulation;
 }
+
+.status:active {
+  transform: scale(0.92);
+}
+
+
 
 .status__icon {
   display: block;
@@ -674,7 +817,8 @@ canvas {
 
 /* Respect users who have asked the OS for less motion. */
 @media (prefers-reduced-motion: reduce) {
-  .floater {
+  .floater,
+  .card-detail {
     animation-duration: 1ms;
   }
   .bar__ghost,
@@ -730,7 +874,7 @@ canvas {
   flex-direction: column;
   gap: 8px;
 
-  padding: 8px 10px calc(var(--safe-bottom) + 10px);
+  padding: 8px clamp(6px, 2vw, 10px) calc(var(--safe-bottom) + 10px);
   border-top: 1px solid var(--panel-border);
   background: linear-gradient(to bottom, rgba(11, 14, 20, 0.75), rgba(11, 14, 20, 0.97));
 
@@ -785,19 +929,40 @@ canvas {
   font-size: 13px;
 }
 
-/* The hand scrolls sideways rather than shrinking cards below a readable size. */
-.combat__hand {
+/*
+ * A row of cards: the hand, or the pick prompt.
+ *
+ * Cards take their width from `--card-cols`, which the component sets from how
+ * many it is about to draw, so a row that has split into two lines fills both
+ * evenly. Nothing here scrolls sideways — on a phone an off-screen card is one
+ * the player has lost track of.
+ */
+.card-row {
+  --card-gap: clamp(4px, 1.4vw, 7px);
+
   display: flex;
-  gap: 7px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-  scrollbar-width: thin;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--card-gap);
+}
+
+.card-row > .card {
+  /* Exactly one column wide, so the line breaks where the component said. */
+  flex: 0 1 calc((100% - (var(--card-cols) - 1) * var(--card-gap)) / var(--card-cols));
+  max-width: 116px;
+}
+
+.combat__hand {
+  padding-bottom: 2px;
 }
 
 .card {
-  flex: 0 0 auto;
-  width: 104px;
-  min-height: 128px;
+  position: relative;
+  overflow: hidden;
+
+  /* Lets the face condense itself at narrow widths — see the query below. */
+  container-type: inline-size;
+  container-name: card;
 
   display: flex;
   flex-direction: column;
@@ -808,6 +973,18 @@ canvas {
   border-radius: 9px;
   background: var(--panel);
 
+  /*
+   * Whose card this is, said in colour. A compact card has room for a name and
+   * a price and not much else, so the owner has to be legible before the text
+   * is read at all — the stripe below carries it, the tint backs it up.
+   */
+  border-color: color-mix(in srgb, var(--card-accent) 38%, var(--panel-border));
+  background-image: linear-gradient(
+    168deg,
+    color-mix(in srgb, var(--card-accent) 14%, transparent),
+    transparent 62%
+  );
+
   color: var(--ink);
   font-family: inherit;
   text-align: left;
@@ -817,13 +994,83 @@ canvas {
   transition: transform 130ms ease, border-color 130ms ease;
 }
 
+/* The owner's stripe. Full bleed, which is why the card clips. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--card-accent);
+}
+
 .card:active {
   transform: translateY(2px);
 }
 
+/*
+ * The hand card: owner, cost, name, stamina. Short enough that an over-full
+ * hand can take a second row without burying the arena behind it, and the
+ * rules text is one hold away.
+ */
+/*
+ * Three sizes, one per detail level — see `faceClass`.
+ *
+ * A card is as tall as what it draws, not as tall as the screen it is on. The
+ * discard prompt and the deck builder both show a name and a brief, so they get
+ * the same card; only the hand, which draws neither rules text nor brief, is
+ * different.
+ */
+.card--compact {
+  /* Fixed, not a floor: a hand that has split into two rows should look like
+     one hand, and it can't if the rows are different heights. */
+  height: 72px;
+  gap: 3px;
+}
+
+.card--brief {
+  min-height: 104px;
+}
+
+.card--full {
+  min-height: 128px;
+}
+
+/* A card that asks for no stamina says so with the space it doesn't take. */
+.card--compact .card__stamina--none {
+  display: none;
+}
+
+.card--compact .card__energy {
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+}
+
+/*
+ * With no rules text to push it down, the name takes the slack — but only two
+ * lines of it. Longer names end in an ellipsis; the whole one is a hold away,
+ * with the rest of the card.
+ */
+.card--compact .card__name {
+  flex: 1 1 auto;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+/*
+ * Picked, in the owner's colour rather than a single system gold.
+ *
+ * The glow matters as much as the hue here: a pale character reads as picked by
+ * the shape of the halo even where the colour itself is quiet.
+ */
 .card--selected {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  border-color: var(--card-accent);
+  box-shadow:
+    0 0 0 1px var(--card-accent),
+    0 0 14px color-mix(in srgb, var(--card-accent) 40%, transparent);
   transform: translateY(-6px);
 }
 
@@ -836,24 +1083,6 @@ canvas {
   border-color: var(--danger);
   box-shadow: 0 0 0 1px var(--danger);
   transform: translateY(-6px);
-}
-
-.card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 4px;
-}
-
-.card__owner {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-dim);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .card__energy {
@@ -874,6 +1103,8 @@ canvas {
 .card__name {
   font-size: 13px;
   font-weight: 700;
+  /* "Exsanguinate" is wider than a squeezed card — break it rather than spill. */
+  overflow-wrap: anywhere;
 }
 
 .card__text {
@@ -881,11 +1112,15 @@ canvas {
   font-size: 10px;
   line-height: 1.35;
   color: var(--ink-dim);
+  overflow-wrap: anywhere;
 }
 
+/* What the card costs, in the bottom-right corner of every card. */
 .card__foot {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
   font-size: 9px;
   color: #7ec4dc;
 }
@@ -895,9 +1130,209 @@ canvas {
   font-style: italic;
 }
 
+/*
+ * At hand width the cost is a number in a badge, because there is no room to
+ * name it — a blue one beside the gold energy pip, the same blue as the stamina
+ * bar under every fighter. Everywhere else the word is spelled out.
+ */
+.card--compact .card__stamina {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+
+  display: grid;
+  place-items: center;
+
+  border-radius: 8px;
+  background: #7ec4dc;
+  color: #0b1a20;
+
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
 .card__blocked {
   font-size: 9px;
   color: #e58b87;
+}
+
+/*
+ * Below this width the normal face stops fitting, so it gives up ornament
+ * before it gives up meaning: the cost pip, the name and the rules text all
+ * survive, the decorative "no stamina" label does not. Keyed to the card's own
+ * width rather than the viewport, so a card is only ever condensed when it is
+ * actually narrow — deck-builder cards, fixed at 92px, never are.
+ */
+@container card (max-width: 84px) {
+  .card__energy {
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+  }
+
+  .card__name {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .card__text {
+    font-size: 9px;
+    line-height: 1.3;
+  }
+
+  .card__foot {
+    font-size: 8px;
+  }
+
+  .card__stamina--none {
+    display: none;
+  }
+}
+
+/*
+ * The held card, over everything.
+ *
+ * It takes input, because it outlives the press that opened it and the next tap
+ * anywhere is what closes it. The card inside stays transparent so a tap that
+ * lands on the card itself closes it too.
+ */
+.card-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+
+  display: grid;
+  /* Pinned to the screen, so a tall stack scrolls rather than running off it. */
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  padding: 24px;
+
+  background: rgba(11, 14, 20, 0.72);
+  backdrop-filter: blur(2px);
+
+  pointer-events: auto;
+  animation: card-detail-in 90ms ease-out;
+}
+
+/* Card and glossary as one column, so the two stay the same width. */
+.card-detail__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  width: min(260px, 78vw);
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.card--detail {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  gap: 8px;
+  padding: 14px;
+
+  border-color: var(--accent);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+}
+
+.card--detail .card__energy {
+  width: 26px;
+  height: 26px;
+  font-size: 15px;
+}
+
+.card--detail .card__name {
+  font-size: 19px;
+  /* Clear of the Power badge in the corner. */
+  padding-right: 76px;
+}
+
+/* Top right, out of the reading order the rest of the card runs in. */
+.card__power {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--card-accent) 45%, var(--panel-border));
+  border-radius: 9px;
+  background: rgba(232, 230, 227, 0.06);
+
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.card--detail .card__text {
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.card--detail .card__foot,
+.card--detail .card__blocked {
+  font-size: 11px;
+}
+
+/*
+ * What the card's keywords mean, under the card that used them.
+ *
+ * A card says "apply 1 Bleed" and leaves it there, which is fine on the card
+ * and useless the moment someone wants to know what Bleed is — which is
+ * exactly why they are holding it.
+ */
+.keywords {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  margin: 0;
+  padding: 10px 12px;
+  list-style: none;
+
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.keywords__entry {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 2px 8px;
+  align-items: center;
+}
+
+.keywords__icon {
+  width: 18px;
+  height: 18px;
+}
+
+.keywords__name {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.keywords__text {
+  grid-column: 2;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--ink-dim);
+}
+
+@keyframes card-detail-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .combat__end-turn {
@@ -915,6 +1350,16 @@ canvas {
   position: absolute;
   inset: 0;
   display: grid;
+  /*
+   * One row, exactly as tall as the screen — never taller.
+   *
+   * A default `auto` row grows to its content instead, and then the panel's
+   * `max-height: 100%` is a percentage of that grown row, which is no limit at
+   * all: the panel runs off the bottom of the screen with its buttons on it and
+   * the scrolling box inside it never has to scroll. `minmax(0, 1fr)` pins the
+   * row to the container so the limit means something.
+   */
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   padding: 16px;
   background: rgba(11, 14, 20, 0.78);
@@ -926,7 +1371,9 @@ canvas {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 100%;
+  /* Definite, not shrink-to-fit: the cards inside size themselves off it. */
+  width: min(420px, 100%);
+  max-height: 100%;
   padding: 16px;
   border: 1px solid var(--accent);
   border-radius: 14px;
@@ -942,10 +1389,14 @@ canvas {
   color: var(--accent);
 }
 
+/*
+ * Briefs, not the hand's bare names: this is a decision, and `keepOne` shows
+ * cards the player has never seen. A long hand splits into rows and the panel
+ * scrolls down rather than off the side.
+ */
 .selection__cards {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
+  min-height: 0;
+  overflow-y: auto;
   padding-bottom: 4px;
 }
 
@@ -955,6 +1406,16 @@ canvas {
   position: absolute;
   inset: 0;
   display: grid;
+  /*
+   * One row, exactly as tall as the screen — never taller.
+   *
+   * A default `auto` row grows to its content instead, and then the panel's
+   * `max-height: 100%` is a percentage of that grown row, which is no limit at
+   * all: the panel runs off the bottom of the screen with its buttons on it and
+   * the scrolling box inside it never has to scroll. `minmax(0, 1fr)` pins the
+   * row to the container so the limit means something.
+   */
+  grid-template-rows: minmax(0, 1fr);
   place-items: center;
   padding: 16px;
   background: rgba(11, 14, 20, 0.86);
@@ -993,9 +1454,12 @@ canvas {
   font-variant-numeric: tabular-nums;
 }
 
+/* Same shrink-to-fit rule as the deck's scroll — see the note there. */
 .roster__list {
   display: flex;
   flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
   gap: 8px;
   margin: 0;
   padding: 0;
@@ -1023,9 +1487,20 @@ canvas {
   transition: border-color 140ms ease, background 140ms ease;
 }
 
+/* A stripe down the edge, the same idea as the card's. */
+.recruit[data-owner] {
+  border-left: 3px solid var(--card-accent);
+}
+
+.recruit[data-owner] .recruit__name {
+  color: var(--card-accent);
+}
+
+/* Equipped reads in the character's own colour, ring and tint together. */
 .recruit--equipped {
-  border-color: var(--accent);
-  background: rgba(216, 166, 87, 0.14);
+  border-color: var(--card-accent);
+  background: color-mix(in srgb, var(--card-accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--card-accent) 45%, transparent);
 }
 
 /* Dimmed rather than hidden: the player should still be able to read a
@@ -1075,6 +1550,268 @@ canvas {
 }
 
 .roster__actions .button {
+  flex: 1;
+}
+
+/* ── Deck builder ────────────────────────────────────────────────────────── */
+
+.deck {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  /*
+   * One row, exactly as tall as the screen — never taller.
+   *
+   * A default `auto` row grows to its content instead, and then the panel's
+   * `max-height: 100%` is a percentage of that grown row, which is no limit at
+   * all: the panel runs off the bottom of the screen with its buttons on it and
+   * the scrolling box inside it never has to scroll. `minmax(0, 1fr)` pins the
+   * row to the container so the limit means something.
+   */
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  padding: clamp(6px, 2vw, 12px);
+  background: rgba(11, 14, 20, 0.9);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
+.deck__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(520px, 100%);
+  max-height: 100%;
+  padding: clamp(10px, 3vw, 16px);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.deck__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.deck__title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.deck__count {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Short of the floor is the one state the player must act on, so it is the one
+   state that gets a colour. */
+.deck__count--short {
+  color: var(--danger);
+}
+
+/*
+ * The part that scrolls.
+ *
+ * `min-height: 0` is load-bearing, not tidying: a flex item defaults to
+ * `min-height: auto`, which refuses to shrink below its content. Without it
+ * this box stays as tall as every card in the pool, the panel grows past its
+ * own `max-height`, nothing scrolls, and the Fight button ends up below the
+ * bottom of the screen with no way to reach it.
+ */
+.deck__scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* Fixed furniture: the scroll gives up space, these never do. */
+.deck__head,
+.deck__problems,
+.deck__actions {
+  flex: 0 0 auto;
+}
+
+.deck__section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+
+  margin: 0 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--panel-border);
+
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* The section is one character's shelf, so it is titled in their colour. */
+.deck__section[data-owner] .deck__section-head {
+  color: var(--card-accent);
+  border-bottom-color: color-mix(in srgb, var(--card-accent) 40%, var(--panel-border));
+}
+
+.deck__budget {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.deck__budget--full {
+  color: var(--accent);
+}
+
+/*
+ * A wrapping grid, not a sideways shelf.
+ *
+ * The panel already scrolls down; a shelf inside it that also scrolls sideways
+ * put most of a character's cards behind a gesture there was nothing on screen
+ * to suggest. Wrapping shows the whole pool at once and costs only height,
+ * which is the axis this screen already spends.
+ */
+.deck__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(86px, 1fr));
+  /* Every row the same height, so a shelf of cards reads as a shelf and not as
+     a skyline. The tallest card in the section sets it. */
+  grid-auto-rows: 1fr;
+  gap: 12px 8px;
+
+  /* The left and top room is for the count badge, which hangs off the corner. */
+  padding: 10px 2px 6px 10px;
+}
+
+.deck-row {
+  position: relative;
+}
+
+/*
+ * The card face doubling as the add button. Shorter than a hand card: the deck
+ * builder shows a dozen at once, so the rules text is clamped rather than given
+ * whatever height it wants.
+ */
+.card--pick {
+  /* Sized by its grid cell, not by the hand's row maths. Both axes: without the
+     height it sits at its own content height inside a full-height row. The
+     floor comes from `card--brief`, the same one the discard prompt uses. */
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  cursor: pointer;
+}
+
+.card--pick .card__text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.card--pick:active:not([aria-disabled='true']) {
+  transform: translateY(1px);
+}
+
+/* Capped rather than broken — still readable, just clearly not addable. */
+.card--pick[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.deck-row--in .card--pick {
+  border-color: var(--card-accent);
+  box-shadow: 0 0 0 1px var(--card-accent);
+  /* Colour only, so the card keeps the owner tint it is already painted with. */
+  background-color: color-mix(in srgb, var(--card-accent) 10%, var(--panel));
+  opacity: 1;
+}
+
+/* A card at its cap is still in the deck, so keep the outline legible. */
+.deck-row--in .card--pick[aria-disabled='true'] {
+  opacity: 0.85;
+}
+
+/*
+ * Copy count, and the remove button. Layered over the card corner rather than
+ * nested inside it, and sized up from a pure label so it is actually tappable.
+ */
+.deck-row__count {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 1;
+
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+
+  display: grid;
+  place-items: center;
+
+  border: 1px solid rgba(11, 14, 20, 0.5);
+  border-radius: 13px;
+  /* The count belongs to the card it sits on, so it wears the same colour. */
+  background: var(--card-accent);
+  color: #1a1408;
+
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.6);
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.deck-row__count:active {
+  transform: scale(0.92);
+}
+
+/* Costs no height: sits on the card rather than under it. */
+.deck-row__max {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(232, 230, 227, 0.16);
+  color: var(--ink-dim);
+
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.deck__problems {
+  margin: 0;
+  padding: 8px 10px 8px 24px;
+  border: 1px solid rgba(210, 84, 79, 0.4);
+  border-radius: 8px;
+  background: rgba(210, 84, 79, 0.1);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #e58b87;
+}
+
+.deck__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.deck__actions .button {
   flex: 1;
 }
 
