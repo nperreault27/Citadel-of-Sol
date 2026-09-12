@@ -41,6 +41,7 @@ import {
   decideFirstTeam,
   missingStaminaBonus,
   COUNTER_ATTACK_POWER,
+  SUPPORT_EFFECT_POWER,
   UNDYING_HEAL_FRACTION,
   poisonTickDamage,
   staminaDrainFromDamage,
@@ -136,8 +137,12 @@ export function cardDefOf(
  *
  * A card that hits more than once reports its strongest hit; none of them pair
  * a headline attack with a bigger incidental one.
+ *
+ * Takes the effects rather than a whole card, so an enemy action — which is a
+ * name and a list of effects with no deck or cost behind it — can be read the
+ * same way, and Power means one thing across the game.
  */
-export function cardPower(card: CardDefinition): number | null {
+export function cardPower(card: { effects: readonly CardEffect[] }): number | null {
   let strongest: number | null = null;
 
   for (const effect of card.effects) {
@@ -254,6 +259,7 @@ export function createCombat(options: CreateCombatOptions): CombatState {
     selection: null,
     seed,
     enemyQueue: [],
+    nextSummon: 1,
     events: [],
     log: [],
   };
@@ -269,6 +275,13 @@ export function createCombat(options: CreateCombatOptions): CombatState {
   withPiles(state, dealt);
 
   log(state, `Battle begins. ${first === 'player' ? 'Your team' : 'The enemy'} is faster.`);
+
+  // Winning initiative has to mean acting first, which takes a queue — the
+  // phase alone is not enough. `stepEnemyTurn` shifts from `enemyQueue`, so an
+  // enemy team that opened the battle with an empty one would hand the turn
+  // straight back, and being the faster side would cost it a turn rather than
+  // gain one.
+  if (first === 'enemy') return beginEnemyTurn(state);
 
   return state;
 }
@@ -580,6 +593,7 @@ function applyStaminaCost(state: CombatState, combatant: Combatant, cost: number
 
 function applyEffects(
   state: CombatState,
+  content: CombatContent,
   effects: readonly CardEffect[],
   sourceId: CombatantId | null,
   targetIds: readonly CombatantId[]
@@ -873,6 +887,14 @@ function applyEffects(
         break;
       }
 
+      case 'summon': {
+        // Targets nothing — a summoner calls to its own side, so the source is
+        // the only input this needs.
+        if (!source) break;
+        summon(state, content, source, effect.archetype, effect.count, effect.max);
+        break;
+      }
+
       case 'status': {
         for (const id of targetIds) {
           const target = state.combatants[id];
@@ -906,8 +928,108 @@ function applyEffects(
 
 // ── Battle end ──────────────────────────────────────────────────────────────
 
+/**
+ * Calls combatants onto the summoner's side, up to its cap.
+ *
+ * Counts only what this summoner currently has standing, so a brood refills as
+ * it is cleared rather than being a one-off. Ids come off the state's own
+ * counter, which is what keeps two plays of one seed identical.
+ *
+ * Summons deliberately do *not* join `enemyQueue`: it is built once at the top
+ * of the enemy turn, so anything arriving mid-turn misses it and acts next turn
+ * instead. That gives the player one turn to answer, for free, out of how the
+ * queue already worked.
+ */
+function summon(
+  state: CombatState,
+  content: CombatContent,
+  source: Combatant,
+  archetype: string,
+  count: number,
+  max: number
+): void {
+  const template = content.summonable?.[archetype];
+  if (!template) return;
+
+  const standing = teamMembers(state, source.team).filter(
+    (c) => !c.downed && c.summonedBy === source.id && c.archetype === archetype
+  ).length;
+
+  const room = Math.max(0, max - standing);
+  const spawning = Math.min(count, room);
+  if (spawning === 0) {
+    log(state, `${source.name} calls, but nothing more answers.`);
+    return;
+  }
+
+  const order = source.team === 'player' ? state.playerOrder : state.enemyOrder;
+
+  for (let i = 0; i < spawning; i += 1) {
+    const ordinal = state.nextSummon;
+    state.nextSummon += 1;
+
+    const id = `${archetype}-s${ordinal}`;
+    const spawned: Combatant = {
+      ...cloneCombatant(template),
+      id,
+      name: `${template.name} ${ordinal}`,
+      team: source.team,
+      summonedBy: source.id,
+    };
+
+    state.combatants[id] = spawned;
+    order.push(id);
+    log(state, `${source.name} calls in ${spawned.name}.`);
+  }
+}
+
+/**
+ * Clears summoned combatants off the board once they have no business on it.
+ *
+ * Two rules: a summon that falls is struck from the field rather than left as a
+ * corpse, and a summon outlives nothing — when its summoner falls, so does it.
+ *
+ * The second is what keeps a summoner the win condition. Without it, killing
+ * the Broodmother leaves her brood standing and the fight drags into a mop-up
+ * of whatever happened to be on the board when she died.
+ *
+ * Called from `checkBattleEnd` before it decides anything, because the decision
+ * depends on this having already happened: with the mother down and three of
+ * her brood still listed, "are there enemies left" answers yes and the victory
+ * never fires.
+ */
+function sweepSummons(state: CombatState): void {
+  const leaving = new Set<CombatantId>();
+
+  for (const id of [...state.playerOrder, ...state.enemyOrder]) {
+    const combatant = state.combatants[id];
+    if (!combatant?.summonedBy) continue;
+
+    const summoner = state.combatants[combatant.summonedBy];
+    if (!combatant.downed && summoner && !summoner.downed) continue;
+
+    leaving.add(id);
+    log(
+      state,
+      combatant.downed
+        ? `${combatant.name} is gone.`
+        : `${combatant.name} collapses without its summoner.`
+    );
+  }
+
+  if (leaving.size === 0) return;
+
+  for (const id of leaving) delete state.combatants[id];
+
+  state.playerOrder = state.playerOrder.filter((id) => !leaving.has(id));
+  state.enemyOrder = state.enemyOrder.filter((id) => !leaving.has(id));
+  state.enemyQueue = state.enemyQueue.filter((id) => !leaving.has(id));
+}
+
 function checkBattleEnd(state: CombatState): void {
   if (state.phase === 'victory' || state.phase === 'defeat') return;
+
+  sweepSummons(state);
 
   const enemiesLeft = teamMembers(state, 'enemy').some((c) => !c.downed);
   if (!enemiesLeft) {
@@ -1013,7 +1135,7 @@ export function resolveCard(
   const affected = resolveTargets(next, def, targetId);
   const staminaBefore = new Map(affected.map((id) => [id, next.combatants[id]?.stamina ?? 0]));
 
-  applyEffects(next, def.effects, def.ownerId, affected);
+  applyEffects(next, content, def.effects, def.ownerId, affected);
 
   // Overdraw's refund: pays back energy if the card left anyone empty. Checked
   // against the before-state so a target who was already at zero doesn't
@@ -1232,8 +1354,8 @@ export function stepEnemyTurn(state: CombatState, content: CombatContent): Comba
     return next.enemyQueue.length === 0 ? finishEnemyTurn(next) : next;
   }
 
-  const actions = content.enemyActions[enemyId] ?? [];
-  const available = actions.filter((action) => hasTargets(next, action));
+  const actions = content.enemyActions[enemy.archetype ?? enemyId] ?? [];
+  const available = actions.filter((action) => hasTargets(next, action, enemyId));
 
   if (available.length > 0) {
     const pick = weightedPick(available, next.seed);
@@ -1244,7 +1366,7 @@ export function stepEnemyTurn(state: CombatState, content: CombatContent): Comba
       log(next, `${enemy.name} uses ${action.name}.`);
 
       applyStaminaCost(next, enemy, enemyStaminaCost(action));
-      applyEffects(next, action.effects, enemyId, enemyTargets(next, action));
+      applyEffects(next, content, action.effects, enemyId, enemyTargets(next, action, enemyId));
     }
   }
 
@@ -1288,12 +1410,39 @@ export function resolveEnemyTurn(state: CombatState, content: CombatContent): Co
   return current;
 }
 
-/** Enemy actions cost a flat share of stamina, so heavy hitters also tire. */
-function enemyStaminaCost(action: EnemyAction): number {
-  const power = action.effects.reduce(
-    (sum, effect) => (effect.type === 'damage' ? sum + effect.power : sum),
-    0
-  );
+/**
+ * Enemy actions cost a flat share of stamina, so heavy hitters also tire.
+ *
+ * Exported because the move sheet prints it: an Ogre that has to rest after two
+ * Smashes is telling the player something, and the number on screen has to be
+ * the one the turn actually spends rather than the UI's guess at it.
+ */
+export function enemyStaminaCost(action: EnemyAction): number {
+  let power = 0;
+
+  for (const effect of action.effects) {
+    switch (effect.type) {
+      case 'damage':
+        power += effect.power;
+        break;
+
+      // A chain is priced off one hit: how many it actually makes is a roll,
+      // and a cost that depended on it would be unknowable before the fact —
+      // including to the move sheet, which prints this number.
+      case 'chainDamage':
+        power += effect.power;
+        break;
+
+      // Everything else is support: shields, buffs, curses, drains, summons.
+      // Pricing these at zero is what let a support enemy act forever without
+      // tiring, which quietly made it immune to the entire stamina axis — the
+      // one thing Cask and Lyra are built to do.
+      default:
+        power += SUPPORT_EFFECT_POWER;
+        break;
+    }
+  }
+
   return Math.round(power / 4);
 }
 
@@ -1308,7 +1457,11 @@ function enemyStaminaCost(action: EnemyAction): number {
  * enemy's eventual choice depend on how many actions were rejected, breaking
  * replay determinism.
  */
-function enemyTargetPool(state: CombatState, action: EnemyAction): CombatantId[] {
+function enemyTargetPool(
+  state: CombatState,
+  action: EnemyAction,
+  enemyId: CombatantId
+): CombatantId[] {
   switch (action.target) {
     case 'oneEnemy':
     case 'allEnemies':
@@ -1320,15 +1473,24 @@ function enemyTargetPool(state: CombatState, action: EnemyAction): CombatantId[]
       return teamMembers(state, 'enemy')
         .filter((c) => !c.downed)
         .map((c) => c.id);
+    // The acting enemy, mirroring how a card resolves `self` to its owner. An
+    // empty pool here would make every enemy self-buff a silent dead turn: the
+    // action still rolls, still logs, still pays stamina, and then lands on
+    // nobody.
     case 'self':
+      return [enemyId];
     case 'none':
       return [];
   }
 }
 
 /** Resolves the pool down to actual targets, rolling only for single-target. */
-function enemyTargets(state: CombatState, action: EnemyAction): CombatantId[] {
-  const pool = enemyTargetPool(state, action);
+function enemyTargets(
+  state: CombatState,
+  action: EnemyAction,
+  enemyId: CombatantId
+): CombatantId[] {
+  const pool = enemyTargetPool(state, action, enemyId);
 
   if (action.target !== 'oneEnemy' && action.target !== 'oneAlly') return pool;
   if (pool.length === 0) return [];
@@ -1349,7 +1511,7 @@ function enemyTargets(state: CombatState, action: EnemyAction): CombatantId[] {
   return [pick.picked.id];
 }
 
-function hasTargets(state: CombatState, action: EnemyAction): boolean {
+function hasTargets(state: CombatState, action: EnemyAction, enemyId: CombatantId): boolean {
   if (action.target === 'none' || action.target === 'self') return true;
-  return enemyTargetPool(state, action).length > 0;
+  return enemyTargetPool(state, action, enemyId).length > 0;
 }

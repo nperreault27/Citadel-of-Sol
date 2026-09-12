@@ -4,20 +4,22 @@ import { COMBAT_CONTENT } from '@/game/combat/content';
 import { canPlayCard, cardDefOf, legalTargets } from '@/game/combat/engine';
 import { discardsRequired, isEnemyTurn } from '@/state/combatStore';
 import { getCombatActions, useCombatStore } from '@/state/useCombatStore';
-import type { CombatState } from '@/game/combat/types';
+import type { Combatant, CombatState } from '@/game/combat/types';
 import { CardDetail, type InspectedCard } from './CardDetail';
 import { CardView } from './CardView';
 import { cardRowProps } from './cardRows';
 import { CombatantPanel } from './CombatantPanel';
+import { EnemySheet } from './EnemySheet';
 import { SelectionStrip } from './SelectionStrip';
 
 /**
  * The whole combat interface, drawn over the ArenaScene canvas.
  *
  * Everything that changes the battle is a tap: tap a card to pick it, tap a
- * combatant to aim it, tap End Turn to pass. The one held gesture reads rather
- * than acts — holding a card in hand blows it up so its rules text can be read,
- * and releasing puts it back without playing it.
+ * combatant to aim it, tap End Turn to pass. Holding reads rather than acts —
+ * hold a card in hand and it blows up so its rules text can be read, hold an
+ * enemy and its stats and move list come up the same way. Releasing either puts
+ * it back without playing or aiming anything.
  */
 /** Which status label is showing. One at a time, screen-wide. */
 interface OpenTip {
@@ -28,6 +30,10 @@ interface OpenTip {
 export function CombatScreen() {
   const battle = useCombatStore((s) => s.battle);
   const [tip, setTip] = useState<OpenTip | null>(null);
+  // Held by id, not by object: the combatant in the store is replaced on every
+  // transition, and a sheet holding the one from three hits ago would sit there
+  // quoting stale health while the fight went on underneath it.
+  const [reading, setReading] = useState<string | null>(null);
 
   if (!battle) return null;
 
@@ -41,10 +47,16 @@ export function CombatScreen() {
 
   return (
     <div className="combat">
-      <EnemyRow battle={battle} tip={tip} onToggleTip={toggleTip} />
+      <EnemyRow
+        battle={battle}
+        tip={tip}
+        onToggleTip={toggleTip}
+        onRead={(combatant) => setReading(combatant ? combatant.id : null)}
+      />
       <PartyRow battle={battle} tip={tip} onToggleTip={toggleTip} />
       <BottomBar battle={battle} />
       <SelectionStrip />
+      <EnemySheet combatant={battle.combatants[reading ?? ''] ?? null} onDismiss={() => setReading(null)} />
       <Banner battle={battle} />
     </div>
   );
@@ -58,6 +70,11 @@ interface RowProps {
   onToggleTip: (combatantId: string, index: number) => void;
 }
 
+interface EnemyRowProps extends RowProps {
+  /** Opens the move sheet for a combatant, or closes it when passed null. */
+  onRead: (combatant: Combatant | null) => void;
+}
+
 /** The open label's index for one combatant, or null if it isn't theirs. */
 function tipFor(tip: OpenTip | null, combatantId: string): number | null {
   return tip && tip.combatantId === combatantId ? tip.index : null;
@@ -68,7 +85,7 @@ function targetSetFor(battle: CombatState): Set<string> {
   return new Set(legalTargets(battle, COMBAT_CONTENT, battle.pendingCard));
 }
 
-function EnemyRow({ battle, tip, onToggleTip }: RowProps) {
+function EnemyRow({ battle, tip, onToggleTip, onRead }: EnemyRowProps) {
   const targets = targetSetFor(battle);
 
   return (
@@ -85,6 +102,9 @@ function EnemyRow({ battle, tip, onToggleTip }: RowProps) {
             onSelect={(target) => getCombatActions().pickTarget(target)}
             openStatus={tipFor(tip, id)}
             onToggleStatus={(index) => onToggleTip(id, index)}
+            // Only enemies. The party's cards are the hand, which is on screen
+            // already and readable where it sits.
+            onInspect={onRead}
           />
         );
       })}

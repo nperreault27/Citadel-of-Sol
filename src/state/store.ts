@@ -1,5 +1,10 @@
 import { createStore } from 'zustand/vanilla';
-import { DEFAULT_PARTY, PARTY_SIZE, prunePlayerDeck } from '@/game/combat/content';
+import {
+  DEFAULT_ENCOUNTER,
+  DEFAULT_PARTY,
+  PARTY_SIZE,
+  prunePlayerDeck,
+} from '@/game/combat/content';
 import type { DeckList } from '@/game/combat/deckbuilding';
 import type { SaveData } from '@/save/schema';
 
@@ -50,6 +55,20 @@ export interface GameState {
   /** The player's deck, as card definition id to copies. */
   deck: DeckList;
 
+  /**
+   * Id of the enemy team the next battle will be against.
+   *
+   * Here rather than in the pre-battle screens' own state because the battle
+   * outlives them: "Fight again" on the victory banner restarts from the store
+   * long after the picker is gone, and reading a default there would quietly
+   * drop the player into a different fight than the one they just lost.
+   *
+   * Deliberately not saved. Party and deck are things the player builds and
+   * expects to find again; which fight they were about to take is a choice they
+   * make on the way in, and the picker is now the first screen of that trip.
+   */
+  encounter: string;
+
   // ── Inventory ──
   inventory: InventoryEntry[];
 
@@ -69,6 +88,7 @@ export interface GameState {
   setFlag: (flag: string) => void;
   setParty: (party: string[]) => void;
   setDeck: (deck: DeckList) => void;
+  setEncounter: (encounter: string) => void;
   hasFlag: (flag: string) => boolean;
   openDialog: (speaker: string, lines: string[]) => void;
   advanceDialog: () => void;
@@ -87,6 +107,7 @@ export const gameStore = createStore<GameState>()((set, get) => ({
   visitedFlags: [],
   party: [...DEFAULT_PARTY],
   deck: {},
+  encounter: DEFAULT_ENCOUNTER,
 
   inventory: [],
 
@@ -148,6 +169,8 @@ export const gameStore = createStore<GameState>()((set, get) => ({
     }),
 
   setDeck: (deck) => set({ deck }),
+
+  setEncounter: (encounter) => set({ encounter }),
 
   openDialog: (speaker, lines) => set({ dialog: { speaker, lines, lineIndex: 0 } }),
 

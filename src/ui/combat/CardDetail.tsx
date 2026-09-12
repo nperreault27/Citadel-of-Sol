@@ -1,7 +1,7 @@
 import { cardPower } from '@/game/combat/engine';
 import type { CardDefinition } from '@/game/combat/types';
 import { CardFace, faceClass } from './CardFace';
-import { StatusIcon } from './StatusIcon';
+import { KeywordList } from './KeywordList';
 import { cardKeywords } from './keywords';
 
 /** Everything a held card needs to show, gathered by the card that was held. */
@@ -52,22 +52,7 @@ export function CardDetail({ card, onDismiss }: Props) {
           {card.blockedReason && <span className="card__blocked">{card.blockedReason}</span>}
         </div>
 
-        {keywords.length > 0 && (
-          <ul className="keywords">
-            {keywords.map((keyword) => (
-              <li key={keyword.kind} className="keywords__entry">
-                <span className={`status status--${keyword.kind} keywords__icon`}>
-                  <span className="status__icon">
-                    <StatusIcon kind={keyword.kind} />
-                  </span>
-                </span>
-
-                <span className="keywords__name">{keyword.label}</span>
-                <p className="keywords__text">{keyword.text}</p>
-              </li>
-            ))}
-          </ul>
-        )}
+        <KeywordList keywords={keywords} />
       </div>
     </div>
   );

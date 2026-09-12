@@ -8,6 +8,7 @@ import { LoadingScreen } from './LoadingScreen';
 import { PauseMenu } from './PauseMenu';
 import { SaveResetNotice } from './SaveResetNotice';
 import { CombatScreen } from './combat/CombatScreen';
+import { EncounterScreen } from './combat/EncounterScreen';
 import { RosterScreen } from './combat/RosterScreen';
 import { DeckScreen } from './combat/DeckScreen';
 
@@ -27,8 +28,13 @@ export function UIOverlay() {
   const inBattle = useCombatStore((s) => s.battle !== null);
 
   // Local, not in a store: nothing outside this component cares which pre-battle
-  // sheet happens to be open.
-  const [prep, setPrep] = useState<'none' | 'roster' | 'deck'>('none');
+  // sheet happens to be open. What was *chosen* on them does live in the store —
+  // the battle outlives these screens.
+  //
+  // The order is fight, then party, then deck: who to bring and what to bring
+  // are both answers to the question the fight asks, so the fight is picked
+  // first and Back walks the same path in reverse.
+  const [prep, setPrep] = useState<'none' | 'encounter' | 'roster' | 'deck'>('none');
 
   const isPlaying = phase === 'playing';
 
@@ -42,11 +48,20 @@ export function UIOverlay() {
       ) : (
         isPlaying && (
           <>
-            <HUD onOpenRoster={() => setPrep('roster')} />
+            <HUD onOpenRoster={() => setPrep('encounter')} />
             <ActionButton />
 
+            {prep === 'encounter' && (
+              <EncounterScreen
+                onPick={() => setPrep('roster')}
+                onClose={() => setPrep('none')}
+              />
+            )}
             {prep === 'roster' && (
-              <RosterScreen onClose={() => setPrep('none')} onBuildDeck={() => setPrep('deck')} />
+              <RosterScreen
+                onClose={() => setPrep('encounter')}
+                onBuildDeck={() => setPrep('deck')}
+              />
             )}
             {prep === 'deck' && <DeckScreen onBack={() => setPrep('roster')} />}
           </>

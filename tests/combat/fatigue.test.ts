@@ -241,7 +241,7 @@ describe('fatigue in play', () => {
     });
 
     const bite: EnemyAction[] = [
-      { id: 'b', name: 'Bite', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 40 }] },
+      { id: 'b', name: 'Bite', description: 'Bite one of your party.', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 40 }] },
     ];
     const withBite = (c: CombatContent): CombatContent => ({ ...c, enemyActions: { foe: bite } });
 

@@ -57,6 +57,11 @@ export function StatusBadge({ entry, onToggle }: Props) {
             }
           : undefined
       }
+      // Holding the panel opens its full readout, and a press that starts on a
+      // badge is not that press. Stopped here rather than filtered there,
+      // because the panel cannot tell where a bubbled press began — and a hold
+      // it starts but never finishes would eat the player's next tap.
+      onPointerDown={onToggle ? (event) => event.stopPropagation() : undefined}
     >
       <span className="status__icon">
         <StatusIcon kind={entry.kind} />

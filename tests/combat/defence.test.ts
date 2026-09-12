@@ -114,17 +114,18 @@ const CARDS: Record<string, CardDefinition> = {
 };
 
 const BITE: EnemyAction[] = [
-  { id: 'bite', name: 'Bite', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 50 }] },
+  { id: 'bite', name: 'Bite', description: 'Bite one of your party.', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 50 }] },
 ];
 
 const SWEEP: EnemyAction[] = [
-  { id: 'sweep', name: 'Sweep', weight: 1, target: 'allEnemies', effects: [{ type: 'damage', power: 50 }] },
+  { id: 'sweep', name: 'Sweep', description: 'Claw your whole party.', weight: 1, target: 'allEnemies', effects: [{ type: 'damage', power: 50 }] },
 ];
 
 const JINX: EnemyAction[] = [
   {
     id: 'jinx',
     name: 'Jinx',
+    description: 'Apply 1 Weakness to one of your party.',
     weight: 1,
     target: 'oneEnemy',
     effects: [{ type: 'status', kind: 'weakness', stacks: 1, duration: PERMANENT }],
@@ -467,7 +468,7 @@ describe('immunity', () => {
 
   it('does not stop a direct stamina drain', () => {
     const drainer: EnemyAction[] = [
-      { id: 'sap', name: 'Sap', weight: 1, target: 'oneEnemy', effects: [{ type: 'drainStamina', amount: 40 }] },
+      { id: 'sap', name: 'Sap', description: 'Drain the stamina of one of your party.', weight: 1, target: 'oneEnemy', effects: [{ type: 'drainStamina', amount: 40 }] },
     ];
 
     const { state, content } = battle({

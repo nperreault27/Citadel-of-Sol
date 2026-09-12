@@ -68,6 +68,28 @@ export interface Combatant {
   name: string;
   team: Team;
 
+  /**
+   * What kind of thing this is, where `id` is which one.
+   *
+   * Four Ratkin are four combatants with four ids, one move list and one
+   * sprite. Anything keyed by *kind* — `enemyActions`, `COMBATANT_FRAMES` —
+   * looks up through here, so adding a fifth Ratkin costs nothing but an entry
+   * in the squad.
+   *
+   * Absent on the player's characters, who are each one of a kind; lookups fall
+   * back to `id` for them.
+   */
+  archetype?: string;
+
+  /**
+   * Who called this combatant in, if it did not start the fight.
+   *
+   * Carries three rules at once: a summoner may only have so many of these
+   * alive, they are struck from the board when they fall rather than lying
+   * there as corpses, and they leave with their summoner when it falls.
+   */
+  summonedBy?: CombatantId;
+
   health: number;
   maxHealth: number;
 
@@ -196,6 +218,25 @@ export type CardEffect =
       fractionOfSourceMaxHealth: number;
       /** Divides the total between the targets instead of giving each the full amount. */
       split?: boolean;
+    }
+  /**
+   * Calls fresh combatants onto the summoner's own side.
+   *
+   * Targets nothing: the summoner is the only input, so this ignores
+   * `targetIds` entirely and reads `sourceId` instead.
+   *
+   * The cap is per summoner and counts only what it currently has standing, so
+   * a brood refills as it is cleared but never outgrows the board. Without one
+   * a summoner outpaces any amount of damage, and the arena's even spacing has
+   * no answer to twelve combatants in a row.
+   */
+  | {
+      type: 'summon';
+      /** Key into `CombatContent.summonable`. */
+      archetype: string;
+      count: number;
+      /** Most that may be alive from this summoner at once. */
+      max: number;
     };
 
 /**
@@ -263,15 +304,54 @@ export interface CardInstance {
 // ── Enemy behaviour ─────────────────────────────────────────────────────────
 
 /**
+ * The effects an enemy may actually use.
+ *
+ * Four of the card effects are meaningless from an enemy, because they reach
+ * for a deck and a hand that only the player has — and two of them are worse
+ * than meaningless. `revealAndKeep` and `discardThenDraw` park the battle in
+ * the `selecting` phase mid-enemy-turn, which `stepEnemyTurn`'s own guard then
+ * refuses to resume: the fight hard-locks with no way out.
+ *
+ * Excluding them here makes that a compile error instead of something found
+ * three playtests later, and costs nothing at runtime — this is a strict subset
+ * of `CardEffect`, so the shared `applyEffects` takes it unchanged.
+ */
+export type EnemyEffect = Exclude<
+  CardEffect,
+  { type: 'draw' | 'revealAndKeep' | 'discardThenDraw' | 'discardHandAndAttack' }
+>;
+
+/**
  * Enemies don't hold decks or energy. Each turn they pick one action from a
  * weighted list. Intents are deliberately NOT telegraphed to the player.
+ *
+ * The move list itself is not an intent, though, and the UI shows it on demand:
+ * knowing the Ogre has a sweep is scouting, knowing it is about to sweep is the
+ * thing being withheld. That is what `description` is for.
  */
 export interface EnemyAction {
   id: string;
   name: string;
+
+  /**
+   * What the move does, written from the player's side of the fight.
+   *
+   * A card's `oneEnemy` means the player's enemy; an enemy action's means one
+   * of the player's party, and the same words would say the opposite thing to
+   * whoever is reading. So these name the party outright rather than relying on
+   * a "them" that flips depending on who owns the card.
+   */
+  description: string;
+
+  /**
+   * Relative odds of being chosen, among the moves that have a legal target.
+   * Not a fixed probability: a move with nothing to hit drops out of the roll
+   * and the rest divide its share.
+   */
   weight: number;
+
   target: TargetKind;
-  effects: CardEffect[];
+  effects: EnemyEffect[];
 }
 
 // ── Animation events ────────────────────────────────────────────────────────
@@ -365,6 +445,17 @@ export interface CombatState {
   seed: number;
 
   /**
+   * Counter behind summoned combatants' ids.
+   *
+   * On the state rather than in a module so ids derive from the battle and
+   * nothing else. A module-level counter would leak across battles and a
+   * timestamp would differ every run — either way two plays of the same seed
+   * would stop matching, which is the one guarantee the replay and the balance
+   * probe both rest on.
+   */
+  nextSummon: number;
+
+  /**
    * Enemies still waiting to act this enemy turn.
    *
    * The enemy turn resolves one combatant at a time rather than all at once, so
@@ -382,5 +473,21 @@ export interface CombatState {
 /** Everything static the engine needs to resolve a battle. */
 export interface CombatContent {
   cardDefs: Record<CardDefId, CardDefinition>;
-  enemyActions: Record<CombatantId, EnemyAction[]>;
+
+  /**
+   * Move lists, keyed by archetype — so every Ratkin on the field shares one
+   * rather than each needing its own entry.
+   */
+  enemyActions: Record<string, EnemyAction[]>;
+
+  /**
+   * Templates a `summon` effect can call in, keyed by archetype.
+   *
+   * Here rather than imported by the engine, which stays free of content: a
+   * summon names a kind, and this is where the engine is told what that kind is.
+   *
+   * Optional, because most fights have nothing that summons and should not have
+   * to declare an empty bestiary to say so.
+   */
+  summonable?: Record<string, Combatant>;
 }

@@ -3,6 +3,7 @@ import { statusSummary } from './keywords';
 import { HealthBar } from './HealthBar';
 import { FloatingNumbers } from './FloatingNumbers';
 import { StatusBadge } from './StatusBadge';
+import { useHoldToInspect } from './useHoldToInspect';
 
 interface Props {
   combatant: Combatant;
@@ -12,6 +13,11 @@ interface Props {
   /** Index of the status whose label is showing, or null for none. */
   openStatus?: number | null;
   onToggleStatus?: ((index: number) => void) | undefined;
+  /**
+   * Called with this combatant to open its full readout, and with null if the
+   * panel goes away while it is open. Omit it and the panel is target-only.
+   */
+  onInspect?: ((combatant: Combatant | null) => void) | undefined;
   compact?: boolean;
 }
 
@@ -23,7 +29,15 @@ interface Props {
  * distinct: health is a solid bar, stamina a thinner one beneath it. Attack,
  * Defense and Speed exist on the combatant but aren't shown here; they don't
  * change moment to moment, so spending scarce phone screen on them would crowd
- * out the numbers that do.
+ * out the numbers that do. Where `onInspect` is given they live one gesture
+ * away instead, with the rest of the readout.
+ *
+ * Tap aims, hold reads — the same split the hand uses. A panel that is not a
+ * legal target has nothing for a tap to mean, so there a plain tap reads too,
+ * which is what makes the readout findable without anyone being told about the
+ * hold. While a card is in the air the tap goes back to aiming, and the hold
+ * still works: checking what an enemy can do is exactly what a player wants to
+ * do mid-decision, and it must not cost them the card they were pointing.
  */
 export function CombatantPanel({
   combatant,
@@ -31,8 +45,14 @@ export function CombatantPanel({
   onSelect,
   openStatus = null,
   onToggleStatus,
+  onInspect,
   compact = false,
 }: Props) {
+  const hold = useHoldToInspect((holding) => {
+    if (!onInspect) return;
+    onInspect(holding ? combatant : null);
+  });
+
   const staminaPct = Math.max(0, (combatant.stamina / combatant.maxStamina) * 100);
   const openEntry = openStatus === null ? null : (combatant.statuses[openStatus] ?? null);
 
@@ -42,6 +62,7 @@ export function CombatantPanel({
     combatant.downed ? 'unit--downed' : '',
     combatant.resting ? 'unit--resting' : '',
     targetable ? 'unit--targetable' : '',
+    onInspect ? 'unit--readable' : '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -55,14 +76,23 @@ export function CombatantPanel({
       // `aria-disabled`, not `disabled`: the status badges inside this button
       // are tappable in their own right, and a disabled button is dead to
       // pointer events — its children never see one either.
-      aria-disabled={!targetable}
+      aria-disabled={!targetable && !onInspect}
       onClick={() => {
-        if (!targetable) return;
-        onSelect(combatant.id);
+        // The player was reading, not aiming.
+        if (hold.consumeHold()) return;
+        if (targetable) onSelect(combatant.id);
+        else onInspect?.(combatant);
       }}
+      onPointerDown={hold.onPointerDown}
+      onPointerMove={hold.onPointerMove}
+      onPointerUp={hold.onPointerUp}
+      onPointerLeave={hold.onPointerLeave}
+      onPointerCancel={hold.onPointerCancel}
+      onContextMenu={hold.onContextMenu}
       aria-label={
         `${combatant.name}, ${combatant.health} of ${combatant.maxHealth} health` +
-        (combatant.shield > 0 ? `, ${combatant.shield} shield` : '')
+        (combatant.shield > 0 ? `, ${combatant.shield} shield` : '') +
+        (onInspect ? '. Hold to see its moves' : '')
       }
     >
       <FloatingNumbers combatantId={combatant.id} />

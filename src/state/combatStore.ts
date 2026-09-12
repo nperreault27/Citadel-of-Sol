@@ -102,12 +102,16 @@ export const combatStore = createStore<CombatStoreState>()((set, get) => {
     startBattle: (seed) => {
       cancelEnemyTurn();
       // The party comes from durable game state, so the deck is built from
-      // whoever is currently equipped.
-      const { party, deck } = gameStore.getState();
-      const battle =
-        seed === undefined
-          ? createArenaBattle(party, deck)
-          : createArenaBattle(party, deck, seed);
+      // whoever is currently equipped — and the fight from whichever team the
+      // player picked on the way in, which is why "Fight again" restarts the
+      // battle they were actually in rather than the default one.
+      const { party, deck, encounter } = gameStore.getState();
+      const battle = createArenaBattle(
+        party,
+        deck,
+        seed ?? Date.now() % 2147483647,
+        encounter
+      );
 
       set({ battle, discardSelection: [] });
       if (battle.phase === 'enemyTurn') scheduleEnemyStep(ENEMY_TURN_LEAD_IN_MS);

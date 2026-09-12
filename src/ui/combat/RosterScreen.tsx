@@ -1,6 +1,7 @@
 import { PARTY_SIZE, ROSTER } from '@/game/combat/content';
 import { gameStore } from '@/state/store';
 import { useGameStore } from '@/state/useGameStore';
+import { PrepFor } from './PrepFor';
 import { StatusIcon } from './StatusIcon';
 import type { StatusKind } from '@/game/combat/types';
 
@@ -60,6 +61,8 @@ export function RosterScreen({
             {party.length} / {PARTY_SIZE}
           </span>
         </header>
+
+        <PrepFor />
 
         <ul className="roster__list">
           {ROSTER.map((character) => {

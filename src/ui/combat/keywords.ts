@@ -7,7 +7,7 @@ import {
   UNDYING_HEAL_FRACTION,
   WEAKNESS_MULTIPLIER,
 } from '@/game/combat/stats';
-import type { CardDefinition, StatusEntry, StatusKind } from '@/game/combat/types';
+import type { CardEffect, StatusEntry, StatusKind } from '@/game/combat/types';
 
 /** A tuning fraction as a percentage, for text that quotes one. */
 const pct = (fraction: number): string => `${Math.round(fraction * 100)}%`;
@@ -125,8 +125,17 @@ export function statusSummary(entry: StatusEntry): string {
   return turns === null ? stacks : `${stacks}, ${plural(turns, 'turn')} remaining`;
 }
 
+/**
+ * Anything that does something and says what it does — a card, or an enemy's
+ * move. Neither the glossary nor Power cares which it is reading.
+ */
+export interface Explainable {
+  description: string;
+  effects: readonly CardEffect[];
+}
+
 /** The statuses a card's effects actually apply. */
-function appliedBy(card: CardDefinition): StatusKind[] {
+function appliedBy(card: Explainable): StatusKind[] {
   const kinds: StatusKind[] = [];
 
   for (const effect of card.effects) {
@@ -147,7 +156,7 @@ function appliedBy(card: CardDefinition): StatusKind[] {
  * about Poison it may not be the one to have applied. Order follows the
  * glossary, so a card explains its keywords the same way every time.
  */
-export function cardKeywords(card: CardDefinition): Keyword[] {
+export function cardKeywords(card: Explainable): Keyword[] {
   const applied = new Set(appliedBy(card));
   const description = card.description.toLowerCase();
 

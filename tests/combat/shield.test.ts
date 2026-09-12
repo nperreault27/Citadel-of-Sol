@@ -83,7 +83,7 @@ const CARDS: Record<string, CardDefinition> = {
 };
 
 const BITE: EnemyAction[] = [
-  { id: 'bite', name: 'Bite', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 50 }] },
+  { id: 'bite', name: 'Bite', description: 'Bite one of your party.', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 50 }] },
 ];
 
 function battle(options: {

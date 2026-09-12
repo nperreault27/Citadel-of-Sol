@@ -4,7 +4,7 @@ import { combatStore } from '@/state/combatStore';
 import { legalTargets } from '@/game/combat/engine';
 import { COMBAT_CONTENT } from '@/game/combat/content';
 import type { CombatEvent, CombatState, CombatantId } from '@/game/combat/types';
-import { AssetKeys, COMBATANT_FRAMES } from '../assets';
+import { AssetKeys, frameFor } from '../assets';
 
 /**
  * Draws the battle: sprites, hit reactions, targeting highlights.
@@ -47,9 +47,15 @@ export class ArenaScene extends Phaser.Scene {
     const battle = combatStore.getState().battle;
     if (battle) this.buildSlots(battle);
 
-    this.unsubscribe = combatStore.subscribe((state, prev) => {
+    this.unsubscribe = combatStore.subscribe((state) => {
       if (!state.battle) return;
-      if (!prev.battle && state.battle) this.buildSlots(state.battle);
+
+      // Covers the start of a battle and every change of roster after it with
+      // one check. Summoners put combatants on the field mid-fight, and a slot
+      // map built once would leave them with a panel in the React row and no
+      // sprite on the battlefield at all.
+      if (!this.drawsExactly(state.battle)) this.buildSlots(state.battle);
+
       this.syncTo(state.battle);
     });
 
@@ -81,6 +87,13 @@ export class ArenaScene extends Phaser.Scene {
     this.clearSlots();
   }
 
+  /** Whether the sprites on screen are exactly the combatants in the battle. */
+  private drawsExactly(battle: CombatState): boolean {
+    const ids = [...battle.enemyOrder, ...battle.playerOrder];
+    if (ids.length !== this.slots.size) return false;
+    return ids.every((id) => this.slots.has(id));
+  }
+
   private clearSlots(): void {
     for (const slot of this.slots.values()) {
       slot.sprite.destroy();
@@ -95,12 +108,13 @@ export class ArenaScene extends Phaser.Scene {
     this.clearSlots();
 
     for (const id of [...battle.enemyOrder, ...battle.playerOrder]) {
-      if (!battle.combatants[id]) continue;
+      const combatant = battle.combatants[id];
+      if (!combatant) continue;
 
       // Drawn beneath the sprite; used for the targeting pulse.
       const glow = this.add.circle(0, 0, 30, 0xd8a657, 0);
 
-      const sprite = this.add.sprite(0, 0, AssetKeys.combatants, COMBATANT_FRAMES[id] ?? 0);
+      const sprite = this.add.sprite(0, 0, AssetKeys.combatants, frameFor(combatant));
       sprite.setOrigin(0.5, 1);
       sprite.setInteractive({ useHandCursor: true });
 

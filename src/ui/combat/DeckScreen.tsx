@@ -15,6 +15,7 @@ import { getCombatActions } from '@/state/useCombatStore';
 import type { CardDefinition } from '@/game/combat/types';
 import { CardDetail, type InspectedCard } from './CardDetail';
 import { CardFace, faceClass } from './CardFace';
+import { PrepFor } from './PrepFor';
 import { useHoldToInspect } from './useHoldToInspect';
 
 /**
@@ -74,6 +75,8 @@ export function DeckScreen({ onBack }: { onBack: () => void }) {
             {size} / {MIN_DECK_SIZE}
           </span>
         </header>
+
+        <PrepFor />
 
         <div className="deck__scroll">
           {sections.map((section) => {

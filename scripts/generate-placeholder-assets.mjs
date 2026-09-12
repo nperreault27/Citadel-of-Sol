@@ -190,35 +190,57 @@ function buildPlayerSheet() {
 
 // ── Combatant spritesheet ───────────────────────────────────────────────────
 
+// [body, trim, skin, width, height] — width/height in pixels of the torso block.
+// Order must match COMBATANT_FRAMES in `src/game/assets.ts`.
+const FIGURES = [
+  // ── The party ──
+  [[96, 148, 104], [150, 196, 140], [236, 212, 180], 18, 24], // Ivy, slight chemist
+  [[186, 66, 74], [230, 120, 110], [235, 197, 162], 20, 26], // Saber, lean assassin
+  [[74, 104, 156], [126, 158, 200], [226, 190, 158], 30, 26], // Cask, broad gunner
+  [[150, 122, 176], [190, 166, 214], [238, 214, 196], 18, 25], // Lyra, poised bard
+  [[186, 138, 62], [222, 178, 96], [228, 186, 150], 32, 28], // Bruno, heavy bruiser
+  [[110, 116, 128], [156, 162, 176], [220, 200, 180], 34, 30], // Hollis, slab of a man
+  [[72, 96, 168], [124, 152, 216], [232, 214, 190], 18, 26], // Emrys, robed mage
+  [[124, 40, 60], [186, 74, 96], [226, 210, 214], 20, 26], // Vesper, pale vampire
+  [[86, 132, 148], [130, 180, 196], [224, 206, 186], 32, 28], // Thane, shield-bearer
+
+  // ── The bestiary ──
+  [[104, 122, 78], [138, 156, 104], [128, 140, 92], 34, 34], // Ogre, hulking
+  [[128, 92, 156], [172, 132, 200], [186, 150, 210], 16, 18], // Imp, tiny
+  [[138, 110, 74], [176, 148, 104], [196, 172, 140], 15, 17], // Ratkin, small and quick
+  [[98, 104, 112], [142, 150, 162], [116, 122, 132], 36, 32], // Bulwark, a wall with legs
+  [[164, 156, 118], [206, 200, 164], [222, 206, 178], 17, 23], // Acolyte, slight attendant
+  [[92, 126, 118], [134, 174, 164], [200, 192, 170], 22, 25], // Sapper, wiry leech
+  [[196, 178, 120], [228, 214, 168], [230, 214, 190], 20, 26], // Cantor, gilded singer
+  [[112, 128, 156], [158, 176, 204], [210, 196, 178], 31, 29], // Warden, armoured guard
+  [[88, 52, 72], [140, 88, 116], [188, 172, 176], 26, 30], // Revenant, gaunt and tall
+  [[118, 106, 96], [158, 146, 132], [176, 168, 152], 19, 22], // Ghoul, stooped
+  [[86, 70, 128], [130, 110, 180], [198, 184, 206], 21, 26], // Hexweaver, hooded
+  [[150, 60, 52], [200, 104, 88], [206, 178, 156], 36, 34], // Tyrant, enormous
+  [[84, 108, 72], [124, 154, 104], [170, 182, 140], 35, 33], // Broodmother, bloated
+  [[142, 132, 88], [184, 176, 124], [198, 190, 148], 13, 14], // Chitterling, smallest thing here
+];
+
 const COMBATANT_W = 48;
 const COMBATANT_H = 56;
 
 /**
- * One frame per combatant, in the order COMBATANT_FRAMES expects:
- * Ivy, Saber, Cask, Lyra, Bruno, Hollis, Emrys, Vesper, Thane, Ogre, Imp.
+ * One frame per kind of combatant, in the order COMBATANT_FRAMES expects — the
+ * nine party members, then every enemy archetype in the bestiary.
  *
- * Silhouettes differ in bulk and height as well as colour, so the party reads
- * apart at a glance on a phone screen rather than relying on hue alone.
+ * Silhouettes differ in bulk and height as well as colour, so a fight reads
+ * apart at a glance on a phone screen rather than relying on hue alone. That
+ * matters more among the enemies than the party: a Warden and a Cantor stand
+ * side by side and the player has to know which one to kill first.
+ *
+ * Keep the order in step with COMBATANT_FRAMES in `src/game/assets.ts`. A
+ * mismatch is silent — the arena falls back to frame 0 and draws the enemy as
+ * Ivy — so there is a test asserting every archetype has a frame.
  */
 function buildCombatantSheet() {
-  const canvas = createCanvas(COMBATANT_W * 11, COMBATANT_H);
+  const canvas = createCanvas(COMBATANT_W * FIGURES.length, COMBATANT_H);
 
-  const figures = [
-    // [body, trim, skin, width, height] — width/height in pixels of the torso block
-    [[96, 148, 104], [150, 196, 140], [236, 212, 180], 18, 24], // Ivy, slight chemist
-    [[186, 66, 74], [230, 120, 110], [235, 197, 162], 20, 26], // Saber, lean assassin
-    [[74, 104, 156], [126, 158, 200], [226, 190, 158], 30, 26], // Cask, broad gunner
-    [[150, 122, 176], [190, 166, 214], [238, 214, 196], 18, 25], // Lyra, poised bard
-    [[186, 138, 62], [222, 178, 96], [228, 186, 150], 32, 28], // Bruno, heavy bruiser
-    [[110, 116, 128], [156, 162, 176], [220, 200, 180], 34, 30], // Hollis, slab of a man
-    [[72, 96, 168], [124, 152, 216], [232, 214, 190], 18, 26], // Emrys, robed mage
-    [[124, 40, 60], [186, 74, 96], [226, 210, 214], 20, 26], // Vesper, pale vampire
-    [[86, 132, 148], [130, 180, 196], [224, 206, 186], 32, 28], // Thane, shield-bearer
-    [[104, 122, 78], [138, 156, 104], [128, 140, 92], 34, 34], // Ogre, hulking
-    [[128, 92, 156], [172, 132, 200], [186, 150, 210], 16, 18], // Imp, tiny
-  ];
-
-  figures.forEach(([body, trim, skin, bodyW, bodyH], index) => {
+  FIGURES.forEach(([body, trim, skin, bodyW, bodyH], index) => {
     const ox = index * COMBATANT_W;
     const centre = ox + Math.floor(COMBATANT_W / 2);
 

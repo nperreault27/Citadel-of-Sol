@@ -527,7 +527,7 @@ describe('stamina drain', () => {
     // turn and only cleared in the enemy's own end-of-turn upkeep, so the enemy
     // is skipped in between.
     const biter: EnemyAction[] = [
-      { id: 'bite', name: 'Bite', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 50 }] },
+      { id: 'bite', name: 'Bite', description: 'Bite one of your party.', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 50 }] },
     ];
 
     const combatants = [hero(), foe()];

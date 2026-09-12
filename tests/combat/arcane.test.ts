@@ -504,7 +504,7 @@ describe('undying', () => {
     // no enemy is ever left to feed on. Pinned so it stays a known limitation
     // rather than becoming a surprise.
     const biter: EnemyAction[] = [
-      { id: 'b', name: 'Bite', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 500 }] },
+      { id: 'b', name: 'Bite', description: 'Bite one of your party.', weight: 1, target: 'oneEnemy', effects: [{ type: 'damage', power: 500 }] },
     ];
 
     const { state, content } = battle({

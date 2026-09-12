@@ -83,6 +83,16 @@
   --card-accent: var(--char-thane);
 }
 
+/*
+ * Not a character, but it earns a colour for the same reason they do: an enemy
+ * move card and a party card are the same frame, and the accent is what says at
+ * a glance which way the card points. Red, because these are the ones happening
+ * to you.
+ */
+[data-owner='enemy'] {
+  --card-accent: var(--danger);
+}
+
 html,
 body,
 #root {
@@ -141,6 +151,8 @@ canvas {
  */
 .deck__scroll,
 .roster__list,
+.encounter__scroll,
+.sheet__scroll,
 .selection__cards,
 .card-detail__stack {
   scrollbar-width: none;
@@ -148,6 +160,8 @@ canvas {
 
 .deck__scroll::-webkit-scrollbar,
 .roster__list::-webkit-scrollbar,
+.encounter__scroll::-webkit-scrollbar,
+.sheet__scroll::-webkit-scrollbar,
 .selection__cards::-webkit-scrollbar,
 .card-detail__stack::-webkit-scrollbar {
   display: none;
@@ -497,6 +511,22 @@ canvas {
   box-shadow:
     0 0 0 1px var(--card-accent),
     0 0 14px color-mix(in srgb, var(--card-accent) 40%, transparent);
+}
+
+/*
+ * A panel with a readout behind it takes a tap even when it isn't a target, so
+ * it has to look like it takes one. Kept to the cursor and a faint hover lift:
+ * every enemy is readable all the time, and an outline on all of them at once
+ * would compete with the one that means "aim here".
+ */
+.unit--readable {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .unit--readable:not(.unit--targetable):hover {
+    border-color: color-mix(in srgb, var(--ink) 28%, var(--panel-border));
+  }
 }
 
 .unit--downed {
@@ -1400,6 +1430,426 @@ canvas {
   padding-bottom: 4px;
 }
 
+/* ── Enemy move sheet ────────────────────────────────────────────────────── */
+
+/*
+ * Modal like the pick prompt, and for the opposite reason: nothing here is a
+ * decision, so nothing underneath should be reachable by accident. A player
+ * reading an enemy's moves mid-turn must not lose the card they were aiming to
+ * a stray tap that lands through the sheet.
+ *
+ * Same one-row grid as `.selection` — see the note there for why `auto` will
+ * not do.
+ */
+.sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  padding: 16px;
+
+  background: rgba(11, 14, 20, 0.78);
+  backdrop-filter: blur(3px);
+  pointer-events: auto;
+  animation: card-detail-in 90ms ease-out;
+}
+
+.sheet__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+
+  width: min(420px, 100%);
+  max-height: 100%;
+  padding: 16px;
+
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--panel-border));
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.sheet__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sheet__title {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 0.04em;
+  color: var(--danger);
+}
+
+.sheet__hp {
+  font-size: 12px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The stats the arena panel has no room for, as a strip of labelled figures.
+ * Even columns so the numbers line up under each other rather than drifting
+ * with the width of their labels.
+ */
+.sheet__stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 0;
+}
+
+.sheet__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+
+  padding: 6px 4px;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(232, 230, 227, 0.04);
+}
+
+.sheet__stat dt {
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+}
+
+.sheet__stat dd {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A stat a status has bent says so. Which status is on the panel behind this. */
+.sheet__stat--up {
+  border-color: color-mix(in srgb, var(--char-ivy) 50%, var(--panel-border));
+}
+
+.sheet__stat--up dd {
+  color: var(--char-ivy);
+}
+
+.sheet__stat--down {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--panel-border));
+}
+
+.sheet__stat--down dd {
+  color: #e58b87;
+}
+
+/* Defense's damage-taken figure, under the number it decodes. */
+.sheet__stat-note {
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+/* Everything below the stats scrolls; the header and Close never do. */
+.sheet__scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 2px;
+}
+
+.sheet__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+/* Names the percentage on each card, once, instead of on every card. */
+.sheet__note {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+/*
+ * Wider than a hand card. A row of two or three moves has the whole panel to
+ * spread across, and these carry full rules text rather than a name — the
+ * hand's 116px cap exists for a row of five over a live arena, which this is
+ * not.
+ */
+.sheet__moves > .card {
+  max-width: none;
+}
+
+/* Nothing here is tappable, so nothing here should press. */
+.card--move {
+  pointer-events: none;
+}
+
+.card--move:active {
+  transform: none;
+}
+
+/* Clear of the Power badge, the same way the held card's name is. */
+.card--move .card__name {
+  padding-right: 64px;
+}
+
+/* The badge is placed for the held card's 14px padding; this card has 8px. */
+.card--move .card__power {
+  top: 8px;
+  right: 8px;
+}
+
+/*
+ * How often the move comes up, in the corner that prices a player's card. It is
+ * the same question — what does this cost me — asked from the other side, so it
+ * sits in the same place and wears the card's own accent rather than the gold
+ * of an energy pip the enemy never spends.
+ */
+.card__share {
+  flex: 0 0 auto;
+  min-width: 22px;
+  padding: 1px 6px;
+
+  border: 1px solid color-mix(in srgb, var(--card-accent) 60%, transparent);
+  border-radius: 8px;
+  /* Tinted rather than filled: dark text on this red is exactly the contrast
+     the gold energy pip has to spare and this one does not. */
+  background: color-mix(in srgb, var(--card-accent) 26%, transparent);
+  color: #f0b5b1;
+
+  font-size: 10px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* ── Encounter select ────────────────────────────────────────────────────── */
+
+/* Same modal frame as the roster it leads into — see the note there on the
+   one-row grid, which is what makes the panel's max-height mean anything. */
+.encounter {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  place-items: center;
+  padding: 16px;
+  background: rgba(11, 14, 20, 0.86);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+
+.encounter__panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(460px, 100%);
+  max-height: 100%;
+  padding: 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.encounter__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.encounter__title {
+  margin: 0;
+  font-size: 18px;
+}
+
+.encounter__count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Fixed furniture above and below; only the tiers give up space. */
+.encounter__scroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.encounter__tier-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.encounter__tier-num {
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+}
+
+.encounter__list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One fight. Enemy red rather than the party's gold, so the two pre-battle
+   screens never read as the same list of the same kind of thing. */
+.bout {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+
+  padding: 10px 12px;
+  border: 1px solid var(--panel-border);
+  border-left: 3px solid color-mix(in srgb, var(--danger) 55%, var(--panel-border));
+  border-radius: 10px;
+  background: rgba(232, 230, 227, 0.04);
+
+  color: var(--ink);
+  font-family: inherit;
+  text-align: left;
+
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 130ms ease, background 130ms ease;
+}
+
+.bout:active {
+  transform: translateY(1px);
+}
+
+.bout--selected {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+
+.bout__top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.bout__name {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.bout__health {
+  font-size: 11px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The question the fight asks. The reason to pick one over another, so it gets
+   the line under the name rather than a tooltip. */
+.bout__pitch {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ink-dim);
+}
+
+.bout__foes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+/*
+ * One enemy in the line-up, and a way into its move sheet.
+ *
+ * Outlined rather than filled so a row of them reads as a list of names and not
+ * as a row of buttons competing with the fight itself for the tap.
+ */
+.bout__foe {
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--panel-border));
+  border-radius: 8px;
+
+  font-size: 10px;
+  color: #e8b0ac;
+  white-space: nowrap;
+
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.bout__foe:active {
+  background: color-mix(in srgb, var(--danger) 20%, transparent);
+}
+
+.encounter__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.encounter__actions .button {
+  flex: 1 1 0;
+}
+
+/* The fight the party is being chosen for, on the screens that follow. */
+.prep-for {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--panel-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+
+  font-size: 11px;
+  color: var(--ink-dim);
+}
+
+.prep-for__name {
+  font-weight: 700;
+  color: #e8b0ac;
+}
+
 /* ── Roster ──────────────────────────────────────────────────────────────── */
 
 .roster {
@@ -1635,7 +2085,8 @@ canvas {
 /* Fixed furniture: the scroll gives up space, these never do. */
 .deck__head,
 .deck__problems,
-.deck__actions {
+.deck__actions,
+.prep-for {
   flex: 0 0 auto;
 }
 

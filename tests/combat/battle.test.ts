@@ -3,11 +3,13 @@ import {
   COMBAT_CONTENT,
   DEFAULT_PARTY,
   ENEMIES,
+  ENEMY_TEAMS,
   ROSTER,
   characterById,
   createArenaBattle,
   defaultDeck,
 } from '@/game/combat/content';
+import { COMBATANT_FRAMES } from '@/game/assets';
 import {
   canPlayCard,
   cardDefOf,
@@ -152,11 +154,37 @@ describe('a full battle', () => {
     expect(createArenaBattle(DEFAULT_PARTY, defaultDeck(DEFAULT_PARTY), 1).activeTeam).toBe('player');
   });
 
-  it('gives every enemy at least one defined action', () => {
-    for (const enemy of ENEMIES) {
-      const actions = COMBAT_CONTENT.enemyActions[enemy.id];
-      expect(actions, `${enemy.id} has no actions`).toBeDefined();
-      expect(actions!.length).toBeGreaterThan(0);
+  it('gives every enemy on every team at least one defined action', () => {
+    // Every team, not just the one the arena currently loads. An unreachable
+    // team with no moves is a bug that only surfaces the day it is switched on.
+    for (const team of ENEMY_TEAMS) {
+      for (const enemy of team.members) {
+        const key = enemy.archetype ?? enemy.id;
+        const actions = COMBAT_CONTENT.enemyActions[key];
+        expect(actions, `${team.id}: ${enemy.id} has no actions for ${key}`).toBeDefined();
+        expect(actions!.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('gives every enemy a sprite frame of its own', () => {
+    // `frameFor` falls back to frame 0 for anything unmapped, which draws the
+    // enemy as Ivy rather than failing — so a missing entry is invisible in
+    // every way except on screen.
+    for (const team of ENEMY_TEAMS) {
+      for (const enemy of team.members) {
+        const key = enemy.archetype ?? enemy.id;
+        expect(COMBATANT_FRAMES[key], `${team.id}: no frame for ${key}`).toBeDefined();
+      }
+    }
+  });
+
+  it('keeps every combatant id unique across all teams at once', () => {
+    // Ids key the combatant map, so two enemies sharing one would collapse into
+    // a single fighter the moment both were on the field.
+    for (const team of ENEMY_TEAMS) {
+      const ids = team.members.map((member) => member.id);
+      expect(new Set(ids).size, `${team.id} has duplicate ids`).toBe(ids.length);
     }
   });
 

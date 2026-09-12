@@ -59,6 +59,7 @@ const BITE: EnemyAction[] = [
   {
     id: 'bite',
     name: 'Bite',
+    description: 'Bite one of your party.',
     weight: 1,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 30 }],

@@ -36,7 +36,14 @@ export const AssetPaths = {
 /** Frame size of the arena combatant sheet. */
 export const COMBATANT_FRAME = { width: 48, height: 56 } as const;
 
-/** Which frame of `combatants.png` each combatant uses. */
+/**
+ * Which frame of `combatants.png` each kind of combatant uses.
+ *
+ * Keyed by archetype, falling back to id for the player's characters, who have
+ * none — so four Ratkin are one entry, not four. Keep in step with the figure
+ * list in `scripts/generate-placeholder-assets.mjs`, which generates the sheet
+ * these indices point into.
+ */
 export const COMBATANT_FRAMES: Record<string, number> = {
   ivy: 0,
   saber: 1,
@@ -47,11 +54,32 @@ export const COMBATANT_FRAMES: Record<string, number> = {
   emrys: 6,
   vesper: 7,
   thane: 8,
+
   ogre: 9,
-  imp1: 10,
-  // Both imps share a frame; only their ids differ.
-  imp2: 10,
+  imp: 10,
+  ratkin: 11,
+  bulwark: 12,
+  acolyte: 13,
+  sapper: 14,
+  cantor: 15,
+  warden: 16,
+  revenant: 17,
+  ghoul: 18,
+  hexweaver: 19,
+  tyrant: 20,
+  broodmother: 21,
+  chitterling: 22,
 };
+
+/**
+ * The sprite key for a combatant: its kind if it has one, else itself.
+ *
+ * Everything drawing a combatant goes through here, so a new enemy needs one
+ * frame entry rather than one per instance on the field.
+ */
+export function frameFor(combatant: { id: string; archetype?: string }): number {
+  return COMBATANT_FRAMES[combatant.archetype ?? combatant.id] ?? 0;
+}
 
 /** Frame dimensions of the player spritesheet, one frame per facing. */
 export const PLAYER_FRAME = { width: 24, height: 32 } as const;

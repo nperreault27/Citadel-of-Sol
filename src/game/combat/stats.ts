@@ -60,6 +60,19 @@ export const COUNTER_ATTACK_POWER = 45;
 /** Health an Undying stack restores when an enemy falls. */
 export const UNDYING_HEAL_FRACTION = 0.5;
 
+/**
+ * What one non-damage effect on an enemy action costs, priced as attack power.
+ *
+ * Enemies have no energy and no deck, so stamina is the only thing rationing
+ * what they do. Pricing support at zero — which is what happened when the cost
+ * counted damage alone — let a shielder or a curse-thrower act every turn
+ * forever, and so made it immune to Cask and Lyra by accident.
+ *
+ * Set a little under a typical attack: supporting should tire an enemy slightly
+ * less than swinging does, not cost it nothing.
+ */
+export const SUPPORT_EFFECT_POWER = 40;
+
 /** Damage equal to this fraction of max health drains the maximum stamina. */
 export const STAMINA_DRAIN_PIVOT = 0.25;
 

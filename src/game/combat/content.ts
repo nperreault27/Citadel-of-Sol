@@ -286,37 +286,35 @@ export function characterById(id: string): Combatant | undefined {
   return ROSTER.find((character) => character.id === id);
 }
 
-// ── The enemy group ─────────────────────────────────────────────────────────
+// ── The bestiary ────────────────────────────────────────────────────────────
+//
+// Each entry below is an archetype — a *kind* of enemy, not one on the field.
+// Teams further down instantiate them, numbering the copies. Everything keyed
+// by kind (move lists, sprite frames) is keyed by the archetype id, so a team
+// of four costs one move list and one frame.
 
-export const OGRE: Combatant = {
-  id: 'ogre',
-  name: 'Ogre',
-  team: 'enemy',
-  health: 400,
-  maxHealth: 400,
-  stamina: 140,
-  maxStamina: 140,
-  attack: 110,
-  defense: 40,
-  speed: 6,
-  statuses: [],
-  shield: 0,
-  downed: false,
-  resting: false,
-};
+interface FoeStats {
+  health: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  stamina: number;
+}
 
-function makeImp(index: number): Combatant {
+/** An archetype, at full health with nothing on it. */
+function foe(archetype: string, name: string, stats: FoeStats): Combatant {
   return {
-    id: `imp${index}`,
-    name: `Imp ${index}`,
+    id: archetype,
+    archetype,
+    name,
     team: 'enemy',
-    health: 120,
-    maxHealth: 120,
-    stamina: 80,
-    maxStamina: 80,
-    attack: 70,
-    defense: 15,
-    speed: 9,
+    health: stats.health,
+    maxHealth: stats.health,
+    stamina: stats.stamina,
+    maxStamina: stats.stamina,
+    attack: stats.attack,
+    defense: stats.defense,
+    speed: stats.speed,
     statuses: [],
     shield: 0,
     downed: false,
@@ -324,7 +322,270 @@ function makeImp(index: number): Combatant {
   };
 }
 
-export const ENEMIES: Combatant[] = [OGRE, makeImp(1), makeImp(2)];
+/**
+ * `count` of an archetype, ready to put on the field.
+ *
+ * Copies are numbered in both id and name, because the player has to be able to
+ * tell them apart on two screens at once — the panel row and the arena. A lone
+ * enemy keeps its bare name: "Bulwark", not "Bulwark 1".
+ */
+function squad(base: Combatant, count: number): Combatant[] {
+  if (count === 1) return [{ ...base }];
+
+  return Array.from({ length: count }, (_, index) => ({
+    ...base,
+    id: `${base.archetype ?? base.id}${index + 1}`,
+    name: `${base.name} ${index + 1}`,
+  }));
+}
+
+export const OGRE = foe('ogre', 'Ogre', {
+  health: 400,
+  attack: 110,
+  defense: 40,
+  speed: 6,
+  stamina: 140,
+});
+
+export const IMP = foe('imp', 'Imp', {
+  health: 120,
+  attack: 70,
+  defense: 15,
+  speed: 9,
+  stamina: 80,
+});
+
+/** Fragile and fast, and there are always more of them than you want. */
+export const RATKIN = foe('ratkin', 'Ratkin', {
+  health: 120,
+  attack: 72,
+  defense: 12,
+  speed: 15,
+  stamina: 70,
+});
+
+/** Defense 72 is 41% damage taken. Raw power is the wrong tool. */
+export const BULWARK = foe('bulwark', 'Bulwark', {
+  health: 420,
+  attack: 92,
+  defense: 72,
+  speed: 3,
+  stamina: 120,
+});
+
+/** Soft, and makes the Bulwark worse every turn it is allowed to live. */
+export const ACOLYTE = foe('acolyte', 'Acolyte', {
+  health: 100,
+  attack: 45,
+  defense: 10,
+  speed: 11,
+  stamina: 60,
+});
+
+/** Cask's mechanic, pointed the other way. */
+export const SAPPER = foe('sapper', 'Sapper', {
+  health: 250,
+  attack: 82,
+  defense: 25,
+  speed: 12,
+  stamina: 90,
+});
+
+/** Hands out shields sized from its own modest bulk. Kill it first. */
+export const CANTOR = foe('cantor', 'Cantor', {
+  health: 160,
+  attack: 50,
+  defense: 30,
+  speed: 10,
+  stamina: 100,
+});
+
+export const WARDEN = foe('warden', 'Warden', {
+  health: 230,
+  attack: 88,
+  defense: 40,
+  speed: 7,
+  stamina: 100,
+});
+
+/** Heals off your losses as well as its own hits. */
+export const REVENANT = foe('revenant', 'Revenant', {
+  health: 360,
+  attack: 100,
+  defense: 35,
+  speed: 11,
+  stamina: 110,
+});
+
+export const GHOUL = foe('ghoul', 'Ghoul', {
+  health: 130,
+  attack: 65,
+  defense: 20,
+  speed: 9,
+  stamina: 70,
+});
+
+/** Punishes hitting often. One big blow costs far less than five small ones. */
+export const HEXWEAVER = foe('hexweaver', 'Hexweaver', {
+  health: 190,
+  attack: 72,
+  defense: 30,
+  speed: 13,
+  stamina: 85,
+});
+
+/** Alone on purpose: every "if only one enemy remains" payoff turns on here. */
+export const TYRANT = foe('tyrant', 'Tyrant', {
+  health: 780,
+  attack: 125,
+  defense: 55,
+  speed: 8,
+  stamina: 160,
+});
+
+/**
+ * Barely dangerous herself — Attack 55 and one weak swing. The brood does the
+ * damage, which is what makes her the clock rather than the threat.
+ */
+export const BROODMOTHER = foe('broodmother', 'Broodmother', {
+  health: 620,
+  attack: 55,
+  defense: 60,
+  speed: 4,
+  stamina: 150,
+});
+
+/** 40 health and Attack 95: dies to anything, ruins you if ignored. */
+export const CHITTERLING = foe('chitterling', 'Chitterling', {
+  health: 40,
+  attack: 95,
+  defense: 5,
+  speed: 16,
+  stamina: 40,
+});
+
+// ── Enemy teams ─────────────────────────────────────────────────────────────
+
+export type EnemyTier = 1 | 2 | 3;
+
+export interface EnemyTeam {
+  id: string;
+  name: string;
+  tier: EnemyTier;
+  /** The question this fight asks of a party, in a line. */
+  pitch: string;
+  members: Combatant[];
+}
+
+/**
+ * Every fight in the game.
+ *
+ * Each team asks one question a party can either answer or not — armour, swarm,
+ * exhaustion, protection, attrition, retaliation. That is what makes choosing
+ * three of nine characters a decision: there is no party that is right for all
+ * of these, which is the entire point of having more than one.
+ *
+ * Tiers 1 and 2 are side-grades within themselves, not a ladder. Tier is a
+ * rough difficulty band, and the fights inside one are meant to be taken in any
+ * order.
+ *
+ * Every number here is a first pass, eyeballed against the original Ogre fight.
+ * Run `npm run balance` after touching any of it.
+ */
+export const ENEMY_TEAMS: EnemyTeam[] = [
+  {
+    id: 'arena',
+    name: 'Ogre and Imps',
+    tier: 1,
+    pitch: 'One big threat and two small ones.',
+    members: [...squad(OGRE, 1), ...squad(IMP, 2)],
+  },
+  {
+    id: 'pack',
+    name: 'Ratkin Pack',
+    tier: 1,
+    pitch: 'Do you have an answer to numbers?',
+    members: squad(RATKIN, 5),
+  },
+  {
+    id: 'wall',
+    name: 'Bulwark and Acolyte',
+    tier: 1,
+    pitch: 'Can you get through armour?',
+    members: [...squad(BULWARK, 1), ...squad(ACOLYTE, 1)],
+  },
+  {
+    id: 'sappers',
+    name: 'The Sappers',
+    tier: 1,
+    pitch: 'Can you fight tired?',
+    members: squad(SAPPER, 3),
+  },
+  {
+    id: 'choir',
+    name: 'The Choir',
+    tier: 2,
+    pitch: 'Can you kill the right thing first?',
+    members: [...squad(CANTOR, 1), ...squad(WARDEN, 2)],
+  },
+  {
+    id: 'revenant',
+    name: 'The Revenant',
+    tier: 2,
+    pitch: 'Can you afford to lose anyone?',
+    members: [...squad(REVENANT, 1), ...squad(GHOUL, 2)],
+  },
+  {
+    id: 'hexweavers',
+    name: 'The Hexweavers',
+    tier: 2,
+    pitch: 'Can you play around a counter?',
+    members: squad(HEXWEAVER, 3),
+  },
+  {
+    id: 'tyrant',
+    // Written as a tier 2 side-grade and moved up on the evidence: the probe
+    // puts a greedy AI at 31% here against 77-85% across the rest of tier 2.
+    // That is a capstone, not a variation.
+    name: 'The Tyrant',
+    tier: 3,
+    pitch: 'One enemy, and it hits like all of them.',
+    members: squad(TYRANT, 1),
+  },
+  {
+    id: 'brood',
+    name: 'The Broodmother',
+    tier: 3,
+    pitch: 'Can you spend your turns on the right target?',
+    members: squad(BROODMOTHER, 1),
+  },
+];
+
+export function enemyTeamById(id: string): EnemyTeam | undefined {
+  return ENEMY_TEAMS.find((team) => team.id === id);
+}
+
+/** The fight a fresh save is pointed at, and the fallback for an unknown id. */
+export const DEFAULT_ENCOUNTER = 'arena';
+
+/** The teams of one tier, in declaration order. */
+export function teamsOfTier(tier: EnemyTier): EnemyTeam[] {
+  return ENEMY_TEAMS.filter((team) => team.tier === tier);
+}
+
+/** Every tier that has a team in it, ascending. */
+export function enemyTiers(): EnemyTier[] {
+  return [...new Set(ENEMY_TEAMS.map((team) => team.tier))].sort((a, b) => a - b);
+}
+
+/**
+ * The team the arena currently fights.
+ *
+ * One line, because encounter selection does not exist yet — point this at a
+ * different team to play it. When a picker arrives this becomes a default
+ * rather than the only option.
+ */
+export const ENEMIES: Combatant[] = enemyTeamById(DEFAULT_ENCOUNTER)!.members;
 
 // ── Cards ───────────────────────────────────────────────────────────────────
 
@@ -851,11 +1112,25 @@ export function defaultDeck(party: readonly string[]): DeckList {
 }
 
 // ── Enemy behaviour ─────────────────────────────────────────────────────────
+//
+// Move lists are keyed by archetype, so every Ratkin on the field shares one.
+//
+// Two rules shape everything here:
+//
+//   Support targets the whole team, never one ally. `enemyTargets` picks a
+//   single target uniformly at random, with no idea who needs it — a one-ally
+//   heal would land on a full-health enemy as readily as a dying one. An
+//   `allAllies` effect has nothing to get wrong.
+//
+//   Weights are public. The move sheet prints each move's share of the roll, so
+//   a list reads as a personality: a 3/1 split says "mostly hits you, and
+//   sometimes does the frightening thing".
 
 const OGRE_ACTIONS: EnemyAction[] = [
   {
     id: 'ogre.smash',
     name: 'Smash',
+    description: 'Deal heavy damage to one of your party.',
     weight: 3,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 80 }],
@@ -863,6 +1138,7 @@ const OGRE_ACTIONS: EnemyAction[] = [
   {
     id: 'ogre.sweep',
     name: 'Sweep',
+    description: 'Deal damage to your whole party.',
     weight: 1,
     target: 'allEnemies',
     effects: [{ type: 'damage', power: 45 }],
@@ -873,6 +1149,7 @@ const IMP_ACTIONS: EnemyAction[] = [
   {
     id: 'imp.scratch',
     name: 'Scratch',
+    description: 'Deal damage to one of your party.',
     weight: 3,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 60 }],
@@ -880,18 +1157,367 @@ const IMP_ACTIONS: EnemyAction[] = [
   {
     id: 'imp.jinx',
     name: 'Jinx',
+    description: 'Apply 1 Weakness to one of your party.',
     weight: 1,
     target: 'oneEnemy',
     effects: [{ type: 'status', kind: 'weakness', stacks: 1, duration: PERMANENT }],
   },
 ];
 
+// ══ Ratkin Pack — "do you have an answer to numbers?" ══
+//
+// Four of them, so the board-wide cards stop being luxuries. Also the fight
+// where Hollis's Rebound earns its slot: three Counter stacks against four
+// separate attackers is three free hits a turn.
+
+const RATKIN_ACTIONS: EnemyAction[] = [
+  {
+    id: 'ratkin.gnash',
+    name: 'Gnash',
+    description: 'Deal damage to one of your party.',
+    weight: 3,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 55 }],
+  },
+  {
+    id: 'ratkin.swarm',
+    name: 'Swarm',
+    description: 'Deal light damage to your whole party.',
+    weight: 1,
+    target: 'allEnemies',
+    effects: [{ type: 'damage', power: 28 }],
+  },
+];
+
+// ══ Bulwark and Acolyte — "can you get through armour?" ══
+//
+// Defense 72 guts raw damage. Poison does not care: it ticks a percentage of
+// max health and ignores Defense entirely, so this is the fight that argues for
+// Ivy. The Acolyte makes the wall thicker every turn it lives, which is the
+// other half of the lesson — kill the right one first.
+
+const BULWARK_ACTIONS: EnemyAction[] = [
+  {
+    id: 'bulwark.slam',
+    name: 'Slam',
+    description: 'Deal heavy damage to one of your party.',
+    weight: 3,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 85 }],
+  },
+  {
+    id: 'bulwark.tremor',
+    name: 'Tremor',
+    description: 'Deal damage to your whole party.',
+    weight: 1,
+    target: 'allEnemies',
+    effects: [{ type: 'damage', power: 45 }],
+  },
+];
+
+const ACOLYTE_ACTIONS: EnemyAction[] = [
+  {
+    id: 'acolyte.litany',
+    name: 'Litany',
+    description: 'Give every enemy 1 Defense Up.',
+    weight: 2,
+    target: 'allAllies',
+    effects: [{ type: 'status', kind: 'defenseUp', stacks: 1, duration: PERMANENT }],
+  },
+  {
+    id: 'acolyte.rebuke',
+    name: 'Rebuke',
+    description: 'Deal light damage to one of your party.',
+    weight: 2,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 40 }],
+  },
+];
+
+// ══ The Sappers — "can you fight tired?" ══
+//
+// Cask's drain and Lyra's Fatigue, aimed at the player. Fatigue multiplies
+// every later stamina loss, so the two moves compound: the longer this runs,
+// the more each Sap takes. Emrys's Reserve goes from filler to essential.
+
+const SAPPER_ACTIONS: EnemyAction[] = [
+  {
+    id: 'sapper.sap',
+    name: 'Sap',
+    description: 'Deal damage to one of your party and drain 55 stamina.',
+    weight: 3,
+    target: 'oneEnemy',
+    effects: [
+      // Draining to zero benches a character for the rest of the turn, but
+      // upkeep then hands the bar back in full and clears the Fatigue with it —
+      // so the drain buys tempo, not attrition. The damage is what actually
+      // closes the fight, and without it the Sappers were an inconvenience
+      // rather than a threat.
+      { type: 'damage', power: 62 },
+      { type: 'drainStamina', amount: 55 },
+    ],
+  },
+  {
+    id: 'sapper.enervate',
+    name: 'Enervate',
+    description: 'Apply 1 Fatigue to your whole party.',
+    weight: 1,
+    target: 'allEnemies',
+    effects: [{ type: 'status', kind: 'fatigue', stacks: 1, duration: UNTIL_REST }],
+  },
+];
+
+// ══ The Choir — "can you kill the right thing first?" ══
+//
+// The Cantor's shields are sized off its own health, exactly as Thane's are, so
+// killing it is worth far more than the 160 health it is holding. Poison walks
+// straight through the shields, which is the same reason Ivy answers Thane.
+
+const CANTOR_ACTIONS: EnemyAction[] = [
+  {
+    id: 'cantor.hymn',
+    name: 'Bulwark Hymn',
+    description: 'Shield every enemy, sized from the Cantor’s own health.',
+    weight: 2,
+    target: 'allAllies',
+    effects: [{ type: 'shield', fractionOfSourceMaxHealth: 0.35 }],
+  },
+  {
+    id: 'cantor.anthem',
+    name: 'Anthem',
+    description: 'Give every enemy 1 Strength.',
+    weight: 1,
+    target: 'allAllies',
+    effects: [{ type: 'status', kind: 'strength', stacks: 1, duration: PERMANENT }],
+  },
+  {
+    id: 'cantor.rebuke',
+    name: 'Rebuke',
+    description: 'Deal light damage to one of your party.',
+    weight: 1,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 45 }],
+  },
+];
+
+const WARDEN_ACTIONS: EnemyAction[] = [
+  {
+    id: 'warden.crush',
+    name: 'Crush',
+    description: 'Deal heavy damage to one of your party.',
+    weight: 3,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 75 }],
+  },
+  {
+    id: 'warden.guard',
+    name: 'Guard',
+    description: 'The Warden gains 1 Defense Up.',
+    weight: 1,
+    target: 'self',
+    effects: [{ type: 'status', kind: 'defenseUp', stacks: 1, duration: PERMANENT }],
+  },
+];
+
+// ══ The Revenant — "can you afford to lose anyone?" ══
+//
+// Undying pays out to the *opposing* team when a combatant falls, so the
+// Revenant's stack cashes in when one of the player's party goes down: half its
+// health back, for free, as a reward for your worst turn. Letting someone drop
+// is not a setback here, it is a gift to the other side.
+
+const REVENANT_ACTIONS: EnemyAction[] = [
+  {
+    id: 'revenant.drain',
+    name: 'Drain',
+    description: 'Deal damage to one of your party and heal for half of it.',
+    weight: 3,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 70, lifesteal: 0.5 }],
+  },
+  {
+    id: 'revenant.gorge',
+    name: 'Gorge',
+    description: 'The Revenant gains 1 Undying, healing it when one of your party falls.',
+    weight: 1,
+    target: 'self',
+    effects: [{ type: 'status', kind: 'undying', stacks: 1, duration: PERMANENT }],
+  },
+];
+
+const GHOUL_ACTIONS: EnemyAction[] = [
+  {
+    id: 'ghoul.rend',
+    name: 'Rend',
+    description: 'Deal damage to one of your party.',
+    weight: 3,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 55 }],
+  },
+  {
+    id: 'ghoul.feast',
+    name: 'Feast',
+    description: 'Deal light damage to one of your party and heal for all of it.',
+    weight: 1,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 35, lifesteal: 1 }],
+  },
+];
+
+// ══ The Hexweavers — "can you play around a counter?" ══
+//
+// Counter fires on being attacked, even when the blow is blocked, and spends a
+// stack each time. So it prices hits, not damage: Emrys's Arc and Saber's
+// Exsanguinate walk into one counter per strike, while a single Haymaker eats
+// exactly one. Poison ticks are not attacks and provoke nothing at all.
+
+const HEXWEAVER_ACTIONS: EnemyAction[] = [
+  {
+    id: 'hexweaver.lash',
+    name: 'Lash',
+    description: 'Deal damage to one of your party.',
+    weight: 2,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 60 }],
+  },
+  {
+    id: 'hexweaver.curse',
+    name: 'Curse',
+    description: 'Apply 1 Weakness to one of your party.',
+    weight: 2,
+    target: 'oneEnemy',
+    effects: [{ type: 'status', kind: 'weakness', stacks: 1, duration: PERMANENT }],
+  },
+  {
+    id: 'hexweaver.thornmail',
+    name: 'Thornmail',
+    description: 'Give every enemy 2 Counter Attack.',
+    weight: 1,
+    target: 'allAllies',
+    effects: [{ type: 'status', kind: 'counter', stacks: 2, duration: PERMANENT }],
+  },
+];
+
+// ══ The Tyrant — "one enemy, and it hits like all of them" ══
+//
+// Being alone is the design. Every "if only one enemy remains" payoff the
+// roster has and never gets to use turns on here: Requiem's tripled Fatigue,
+// Goad with exactly one attacker to soak, Winded stealing a whole turn rather
+// than a third of one.
+
+const TYRANT_ACTIONS: EnemyAction[] = [
+  {
+    id: 'tyrant.cleave',
+    name: 'Cleave',
+    description: 'Deal heavy damage to your whole party.',
+    weight: 3,
+    target: 'allEnemies',
+    effects: [{ type: 'damage', power: 70 }],
+  },
+  {
+    id: 'tyrant.execute',
+    name: 'Execute',
+    description: 'Deal enormous damage to one of your party.',
+    weight: 2,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 120 }],
+  },
+  {
+    id: 'tyrant.sunder',
+    name: 'Sunder',
+    description: 'Apply 1 Weakness to your whole party and drain 25 stamina from each.',
+    weight: 1,
+    target: 'allEnemies',
+    effects: [
+      { type: 'status', kind: 'weakness', stacks: 1, duration: PERMANENT },
+      { type: 'drainStamina', amount: 25 },
+    ],
+  },
+  {
+    id: 'tyrant.enrage',
+    name: 'Enrage',
+    description: 'The Tyrant gains 2 Strength.',
+    weight: 1,
+    target: 'self',
+    effects: [{ type: 'status', kind: 'strength', stacks: 2, duration: PERMANENT }],
+  },
+];
+
+// ══ The Broodmother — "can you spend your turns on the right target?" ══
+//
+// She barely hurts you. Attack 55 and one weak swing, against a brood that hits
+// for roughly twice what she does — which is the whole design. Every turn poses
+// the same question: clear the Chitterlings, which does nothing to win, or hit
+// the mother and take the brood's full damage for another round.
+//
+// It is the one fight here where killing is mandatory and never progress. Three
+// rules hold it together, and all three live outside this list: summons arrive
+// too late to join the enemy queue and so act a turn later, the cap stops the
+// brood outgrowing any answer, and the brood is swept off the board when she
+// falls, so she is unambiguously the clock.
+
+const BROOD_CAP = 4;
+
+const BROODMOTHER_ACTIONS: EnemyAction[] = [
+  {
+    id: 'broodmother.spawn',
+    name: 'Spawn Brood',
+    description: 'Call in 2 Chitterlings. They act from next turn.',
+    weight: 2,
+    // Summoning reads the summoner, not a target — see the effect's own note.
+    target: 'none',
+    effects: [{ type: 'summon', archetype: 'chitterling', count: 2, max: BROOD_CAP }],
+  },
+  {
+    id: 'broodmother.shriek',
+    name: 'Shriek',
+    description: 'Apply 1 Fatigue to your whole party.',
+    weight: 2,
+    target: 'allEnemies',
+    effects: [{ type: 'status', kind: 'fatigue', stacks: 1, duration: UNTIL_REST }],
+  },
+  {
+    id: 'broodmother.lash',
+    name: 'Lash',
+    description: 'Deal light damage to one of your party.',
+    weight: 1,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 50 }],
+  },
+];
+
+/** One move, and it is the only reason the brood is frightening. */
+const CHITTERLING_ACTIONS: EnemyAction[] = [
+  {
+    id: 'chitterling.savage',
+    name: 'Savage',
+    description: 'Deal heavy damage to one of your party.',
+    weight: 1,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 95 }],
+  },
+];
+
 export const COMBAT_CONTENT: CombatContent = {
   cardDefs: CARD_DEFS,
+  summonable: {
+    chitterling: CHITTERLING,
+  },
   enemyActions: {
     ogre: OGRE_ACTIONS,
-    imp1: IMP_ACTIONS,
-    imp2: IMP_ACTIONS,
+    imp: IMP_ACTIONS,
+    ratkin: RATKIN_ACTIONS,
+    bulwark: BULWARK_ACTIONS,
+    acolyte: ACOLYTE_ACTIONS,
+    sapper: SAPPER_ACTIONS,
+    cantor: CANTOR_ACTIONS,
+    warden: WARDEN_ACTIONS,
+    revenant: REVENANT_ACTIONS,
+    ghoul: GHOUL_ACTIONS,
+    hexweaver: HEXWEAVER_ACTIONS,
+    tyrant: TYRANT_ACTIONS,
+    broodmother: BROODMOTHER_ACTIONS,
+    chitterling: CHITTERLING_ACTIONS,
   },
 };
 
@@ -907,7 +1533,8 @@ export const COMBAT_CONTENT: CombatContent = {
 export function createArenaBattle(
   equipped: readonly string[] = DEFAULT_PARTY,
   deck: DeckList = LEGACY_DEFAULT_DECK,
-  seed = Date.now() % 2147483647
+  seed = Date.now() % 2147483647,
+  encounter: string = DEFAULT_ENCOUNTER
 ): CombatState {
   const party = equipped
     .slice(0, PARTY_SIZE)
@@ -916,8 +1543,13 @@ export function createArenaBattle(
 
   const roster = party.length > 0 ? party : DEFAULT_PARTY.map((id) => characterById(id)!);
 
+  // An unknown id falls back rather than throwing, for the same reason a corrupt
+  // party does: a bad value should cost the player the fight they picked, not
+  // the ability to start one.
+  const team = enemyTeamById(encounter) ?? enemyTeamById(DEFAULT_ENCOUNTER)!;
+
   const options: CreateCombatOptions = {
-    combatants: [...roster, ...ENEMIES],
+    combatants: [...roster, ...team.members],
     deck: expandDeck(deck),
     seed,
   };
