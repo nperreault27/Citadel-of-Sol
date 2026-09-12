@@ -8,7 +8,14 @@ import {
   selectCard,
 } from '@/game/combat/engine';
 import { stacksOf } from '@/game/combat/status';
-import { poisonTickDamage, missingStaminaBonus, computeDamage } from '@/game/combat/stats';
+import {
+  BLEED_MULTIPLIER,
+  computeDamage,
+  DEFENSE_K,
+  missingStaminaBonus,
+  POISON_TICK_FRACTION,
+  poisonTickDamage,
+} from '@/game/combat/stats';
 import type {
   CardDefinition,
   Combatant,
@@ -212,13 +219,18 @@ function passTurn(state: CombatState, content: CombatContent): CombatState {
 
 // ── Poison ──────────────────────────────────────────────────────────────────
 
+// One tick of one stack on the 200-maxHP foe these tests use. Derived rather
+// than pinned: the fraction is a tuning dial, and the rules below are about
+// when poison bites and for how long, not how hard.
+const TICK = poisonTickDamage(1, 200);
+
 describe('poison', () => {
-  it('deals 5% of max health per stack, ignoring Defense', () => {
+  it('deals a flat share of max health per stack, ignoring Defense', () => {
     // The point of poison ignoring the mitigation curve: a 200-DEF wall takes
-    // exactly the same tick as a naked one.
-    expect(poisonTickDamage(1, 200)).toBe(10);
-    expect(poisonTickDamage(3, 200)).toBe(30);
-    expect(poisonTickDamage(2, 400)).toBe(40);
+    // exactly the same tick as a naked one, and stacks add linearly.
+    expect(poisonTickDamage(1, 200)).toBe(Math.round(200 * POISON_TICK_FRACTION));
+    expect(poisonTickDamage(3, 200)).toBe(3 * TICK);
+    expect(poisonTickDamage(2, 400)).toBe(4 * TICK);
   });
 
   it('ticks at the end of the victim team turn', () => {
@@ -228,8 +240,7 @@ describe('poison', () => {
     expect(applied.combatants['foe']?.health).toBe(200);
 
     const afterTurn = passTurn(applied, content);
-    // 1 stack on a 200 maxHP target = 10.
-    expect(afterTurn.combatants['foe']?.health).toBe(190);
+    expect(afterTurn.combatants['foe']?.health).toBe(200 - TICK);
   });
 
   it('ticks twice over its two-turn timer, then expires', () => {
@@ -237,13 +248,13 @@ describe('poison', () => {
     let current = play(state, content, 'poisonHit', 'foe');
 
     current = passTurn(current, content); // tick 1
-    expect(current.combatants['foe']?.health).toBe(190);
+    expect(current.combatants['foe']?.health).toBe(200 - TICK);
 
     current = passTurn(current, content); // tick 2
-    expect(current.combatants['foe']?.health).toBe(180);
+    expect(current.combatants['foe']?.health).toBe(200 - 2 * TICK);
 
     current = passTurn(current, content); // expired
-    expect(current.combatants['foe']?.health).toBe(180);
+    expect(current.combatants['foe']?.health).toBe(200 - 2 * TICK);
     expect(stacksOf(current.combatants['foe']!.statuses, 'poison')).toBe(0);
   });
 
@@ -258,8 +269,8 @@ describe('poison', () => {
 
     expect(current.combatants['foe']!.statuses.filter((s) => s.kind === 'poison')).toHaveLength(2);
 
-    current = passTurn(current, content); // both tick: 2 stacks = 20
-    expect(current.combatants['foe']?.health).toBe(200 - 10 - 20);
+    current = passTurn(current, content); // both tick, so twice one stack's worth
+    expect(current.combatants['foe']?.health).toBe(200 - TICK - 2 * TICK);
 
     // Stack A is now spent; only B remains.
     expect(stacksOf(current.combatants['foe']!.statuses, 'poison')).toBe(1);
@@ -393,8 +404,8 @@ describe('cascade', () => {
     let current = play(state, content, 'cascade');
     for (let i = 0; i < 4; i++) current = passTurn(current, content);
 
-    // 2 stacks ticking for 10 each, over 3 turns before they expire.
-    expect(current.combatants['foe']?.health).toBe(200 - 60);
+    // 2 stacks ticking over the 3 turns they are alive before they expire.
+    expect(current.combatants['foe']?.health).toBe(200 - 6 * TICK);
   });
 
   it('does nothing to a downed enemy', () => {
@@ -410,30 +421,35 @@ describe('cascade', () => {
 
 // ── Bleed ───────────────────────────────────────────────────────────────────
 
+// 100 attack x 50% power, the `plainHit` card against a bare foe, once a Bleed
+// stack has amplified it. Derived from the constant so the multiplier stays a
+// dial — these tests are about when a stack is spent, not how hard it hits.
+const BLED = Math.round(50 * BLEED_MULTIPLIER);
+
 describe('bleed', () => {
-  it('doubles the next attack and consumes one stack', () => {
+  it('amplifies the next attack and consumes one stack', () => {
     const { state, content } = battle({
       combatants: [hero(), foe({ statuses: [{ kind: 'bleed', stacks: 2, duration: PERMANENT }] })],
     });
 
     const after = play(state, content, 'plainHit', 'foe');
 
-    // 100 attack x 50% power = 50, doubled to 100.
-    expect(after.combatants['foe']?.health).toBe(100);
+    expect(after.combatants['foe']?.health).toBe(200 - BLED);
     expect(stacksOf(after.combatants['foe']!.statuses, 'bleed')).toBe(1);
   });
 
-  it('doubles after mitigation, not before', () => {
+  it('applies after mitigation, not before', () => {
     const { state, content } = battle({
       combatants: [
         hero(),
-        foe({ defense: 50, statuses: [{ kind: 'bleed', stacks: 1, duration: PERMANENT }] }),
+        foe({ defense: DEFENSE_K, statuses: [{ kind: 'bleed', stacks: 1, duration: PERMANENT }] }),
       ],
     });
 
-    // 50 raw, halved to 25 by DEF 50, then doubled to 50.
+    // 50 raw, halved to 25 by a Defense equal to K, and the stack amplifies
+    // that — so the wall's Defense is never skipped by a bleeding hit.
     const after = play(state, content, 'plainHit', 'foe');
-    expect(after.combatants['foe']?.health).toBe(150);
+    expect(after.combatants['foe']?.health).toBe(200 - Math.round(25 * BLEED_MULTIPLIER));
   });
 
   it('is spent one stack per attack, not all at once', () => {
@@ -462,8 +478,8 @@ describe('bleed', () => {
 
     expect(stacksOf(after.combatants['a']!.statuses, 'bleed')).toBe(1);
     expect(stacksOf(after.combatants['b']!.statuses, 'bleed')).toBe(0);
-    expect(after.combatants['a']?.health).toBe(100);
-    expect(after.combatants['b']?.health).toBe(100);
+    expect(after.combatants['a']?.health).toBe(200 - BLED);
+    expect(after.combatants['b']?.health).toBe(200 - BLED);
   });
 
   it('has no timer — it waits until something attacks', () => {
@@ -615,11 +631,10 @@ describe('exsanguinate', () => {
 
     expect(after.hand).toHaveLength(0);
 
-    // 4 remaining cards → 4 strikes of 50. The first is not doubled (no bleed
+    // 4 remaining cards → 4 strikes of 50. The first is not amplified (no bleed
     // yet); each strike then leaves a stack that the next one consumes.
-    // 50 + 100 + 100 + 100 = 350.
     expect(before).toBe(5);
-    expect(after.combatants['foe']?.health).toBe(1000 - 350);
+    expect(after.combatants['foe']?.health).toBe(1000 - (50 + 3 * BLED));
   });
 
   it('does nothing extra with an otherwise empty hand', () => {

@@ -111,6 +111,36 @@ describe('status icons', () => {
     expect(container.querySelectorAll('.unit__tip')).toHaveLength(1);
   });
 
+  it('puts the label away on the next press anywhere else', async () => {
+    const user = userEvent.setup();
+    battleWithPoison();
+    const { container } = render(<CombatScreen />);
+
+    await user.click(container.querySelector('.combat__party .status') as HTMLElement);
+    expect(container.querySelectorAll('.unit__tip')).toHaveLength(1);
+
+    // Reading is over the moment the player reaches for anything else, and
+    // getting back to the fight should not cost a tap of its own.
+    await user.click(container.querySelector('.combat__hand') as HTMLElement);
+    expect(container.querySelectorAll('.unit__tip')).toHaveLength(0);
+  });
+
+  it('does not swallow the press that closes it', async () => {
+    const user = userEvent.setup();
+    battleWithPoison();
+    const { container } = render(<CombatScreen />);
+
+    await user.click(container.querySelector('.combat__party .status') as HTMLElement);
+    await user.click(container.querySelector('.combat__hand .card') as HTMLElement);
+
+    expect(container.querySelectorAll('.unit__tip')).toHaveLength(0);
+
+    // The press was watched, not intercepted: the card it was aimed at is
+    // either waiting for a target or already resolved.
+    const battle = combatStore.getState().battle;
+    expect(battle?.phase === 'selectTarget' || battle?.hand.length === 4).toBe(true);
+  });
+
   it('does not aim a card at the fighter the badge belongs to', async () => {
     const user = userEvent.setup();
     battleWithPoison();

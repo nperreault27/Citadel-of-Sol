@@ -233,6 +233,26 @@ describe('taunt', () => {
     expect(stacksOf(two.combatants['tank']?.statuses ?? [], 'taunt')).toBe(0);
   });
 
+  it('is still up while the enemies choose their targets', () => {
+    // Goad is played on the player's turn and is only a taunt if it survives the
+    // player's own end of turn — otherwise it expires before anyone can be drawn
+    // onto the tank, which is the whole card.
+    const { state, content } = battle({
+      combatants: [unit(), ally(), foe()],
+      deck: Array.from({ length: 12 }, () => 'goad'),
+      enemyActions: { foe: BITE },
+    });
+
+    const queued = endPlayerTurn(play(state, content, 'goad'), content);
+    expect(stacksOf(queued.combatants['tank']?.statuses ?? [], 'taunt')).toBe(1);
+
+    const after = resolveEnemyTurn(queued, content);
+    expect(after.combatants['ally']?.health).toBe(400);
+    expect(after.combatants['tank']?.health).toBeLessThan(400);
+    // One stack bought exactly one enemy turn, and is gone as it closes.
+    expect(stacksOf(after.combatants['tank']?.statuses ?? [], 'taunt')).toBe(0);
+  });
+
   it('stacks up when applied repeatedly', () => {
     const { state, content } = battle({
       deck: Array.from({ length: 12 }, () => 'goad'),

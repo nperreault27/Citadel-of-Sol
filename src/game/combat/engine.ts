@@ -41,6 +41,7 @@ import {
   decideFirstTeam,
   missingStaminaBonus,
   COUNTER_ATTACK_POWER,
+  ENEMY_POWER_PER_STAMINA,
   SUPPORT_EFFECT_POWER,
   UNDYING_HEAL_FRACTION,
   poisonTickDamage,
@@ -162,6 +163,11 @@ export function cardPower(card: { effects: readonly CardEffect[] }): number | nu
 function teamMembers(state: CombatState, team: Team): Combatant[] {
   const order = team === 'player' ? state.playerOrder : state.enemyOrder;
   return order.map((id) => state.combatants[id]).filter((c): c is Combatant => c !== undefined);
+}
+
+/** Everyone in the fight, party first, each side in its own turn order. */
+function allCombatants(state: CombatState): Combatant[] {
+  return [...teamMembers(state, 'player'), ...teamMembers(state, 'enemy')];
 }
 
 /**
@@ -423,15 +429,19 @@ function dealDamage(
 
   let damage = computeDamage(attacker, target, power);
 
-  // Bleed is consumed a stack at a time and doubles the *final* damage, after
+  // Bleed is consumed a stack at a time and amplifies the *final* damage, after
   // Attack and Defense have both been applied. An area attack therefore eats
   // one stack from each bleeding target it hits, not one stack in total.
   // A blocked attack still spends the stack — immunity stops the damage, not
   // the fact that a blow landed.
+  //
+  // Rounded rather than left raw: the multiplier is a tuning dial and need not
+  // be a whole number, and half a point of damage would otherwise reach health,
+  // the floating number and the log — nothing else in the game deals fractions.
   const bleed = consumeBleedStack(target.statuses);
   if (bleed.consumed) {
     target.statuses = bleed.statuses;
-    damage *= BLEED_MULTIPLIER;
+    damage = Math.max(1, Math.round(damage * BLEED_MULTIPLIER));
   }
 
   const immune = isImmune(target.statuses);
@@ -519,6 +529,7 @@ function applyDirectDamage(
   if (target.health === 0 && !target.downed) {
     target.downed = true;
     target.resting = false;
+    target.restingSinceTurnStart = false;
     emit(state, { type: 'downed', targetId: target.id });
     log(state, `${target.name} is down!`);
 
@@ -655,12 +666,30 @@ function applyEffects(
           state.seed = roll.seed;
           if (roll.value >= effect.continueChance) break;
 
-          // Any living enemy, the one just struck included. That is what keeps
-          // the chain worth casting into a single target: without it, a lone
-          // enemy has nowhere to jump and the card is one hit for two energy.
-          const candidates = teamMembers(state, target.team)
-            .filter((c) => !c.downed)
-            .map((c) => ({ id: c.id, weight: 1 }));
+          // Where the bolt goes next. It prefers a new enemy — `redirectChance`
+          // of the time it takes one — but can double back, and with nobody
+          // else standing it stays where it is rather than fizzling. That is
+          // what keeps the chain worth casting into a single target: otherwise
+          // a lone enemy has nowhere to jump and the card is one hit for two
+          // energy exactly when you are finishing someone off.
+          //
+          // One weighted draw either way, so the number of rolls a chain spends
+          // does not depend on how many enemies are left — two casts from the
+          // same seed stay comparable.
+          const living = teamMembers(state, target.team).filter((c) => !c.downed);
+          const others = living.filter((c) => c.id !== target.id);
+          const struckStands = living.length !== others.length;
+
+          const candidates =
+            struckStands && others.length > 0
+              ? [
+                  { id: target.id, weight: 1 - effect.redirectChance },
+                  ...others.map((c) => ({
+                    id: c.id,
+                    weight: effect.redirectChance / others.length,
+                  })),
+                ]
+              : living.map((c) => ({ id: c.id, weight: 1 }));
 
           if (candidates.length === 0) break;
 
@@ -712,6 +741,7 @@ function applyEffects(
           // the reason the card is worth an energy.
           if (target.stamina > 0 && target.resting) {
             target.resting = false;
+            target.restingSinceTurnStart = false;
             log(state, `${target.name} finds a second wind.`);
           } else {
             log(state, `${target.name} recovers ${effect.amount} stamina.`);
@@ -1212,16 +1242,59 @@ function runTurnStart(state: CombatState, team: Team): void {
   for (const combatant of teamMembers(state, team)) {
     combatant.statuses = consumeOnTurnStart(combatant.statuses);
   }
+
+  markRestsForTurn(state);
 }
 
 /**
- * End-of-turn upkeep for one team: statuses tick, exhausted characters recover.
+ * Marks everyone already asleep as benched for the turn now opening.
+ *
+ * Both sides are marked whichever team is about to act, because a rest is
+ * measured in turns rather than in whose turn it is: whoever is asleep when a
+ * turn starts sleeps through all of it and wakes at its end. Exhausting
+ * yourself on your own turn therefore costs you the enemy's turn — you are
+ * marked as that turn opens, not as this one did — while a drain landing
+ * mid-turn still costs its victim the turn after, as it always did.
+ */
+function markRestsForTurn(state: CombatState): void {
+  for (const combatant of allCombatants(state)) {
+    combatant.restingSinceTurnStart = combatant.resting;
+  }
+}
+
+/**
+ * Wakes anyone who has now slept through a whole turn. Runs at the end of every
+ * turn, either side's.
  *
  * Stamina refills completely rather than partially, which is what makes a
- * forced rest cost exactly one turn of actions and nothing more.
+ * forced rest cost exactly the turn it covers and nothing more.
  */
-function runUpkeep(state: CombatState, team: Team): void {
-  for (const combatant of teamMembers(state, team)) {
+function runRecovery(state: CombatState): void {
+  for (const combatant of allCombatants(state)) {
+    if (combatant.downed || !combatant.resting || !combatant.restingSinceTurnStart) continue;
+
+    combatant.resting = false;
+    combatant.restingSinceTurnStart = false;
+    combatant.stamina = combatant.maxStamina;
+    // Resting is the only thing that clears Fatigue, so being ground down to
+    // nothing is also how you shake it off.
+    combatant.statuses = consumeOnRest(combatant.statuses);
+    log(state, `${combatant.name} has recovered.`);
+  }
+}
+
+/**
+ * End-of-round upkeep: poison bites, then every timer ticks.
+ *
+ * Both teams tick here, at the close of the enemy turn, rather than each at the
+ * end of its own. A one-turn buff is only worth playing if it survives the
+ * enemy turn — Hollis's Goad taunts nobody if it expires before the enemies
+ * pick their targets — and a one-turn debuff hung on an enemy has to last long
+ * enough for them to act under it. Ticking both sides at the same moment gives
+ * each exactly one full round, however early in the round it was applied.
+ */
+function runStatusUpkeep(state: CombatState): void {
+  for (const combatant of allCombatants(state)) {
     // Poison resolves before the timers tick, so a 2-turn stack deals damage on
     // both of the turns it is alive rather than being cut short on the second.
     // Immunity blocks poison too — it is damage, and without this Ivy would
@@ -1239,17 +1312,6 @@ function runUpkeep(state: CombatState, team: Team): void {
     }
 
     combatant.statuses = tickStatuses(combatant.statuses);
-
-    if (combatant.downed) continue;
-
-    if (combatant.resting) {
-      combatant.resting = false;
-      combatant.stamina = combatant.maxStamina;
-      // Resting is the only thing that clears Fatigue, so being ground down to
-      // nothing is also how you shake it off.
-      combatant.statuses = consumeOnRest(combatant.statuses);
-      log(state, `${combatant.name} has recovered.`);
-    }
   }
 }
 
@@ -1269,8 +1331,6 @@ export function endPlayerTurn(state: CombatState, _content: CombatContent): Comb
 
   const next = cloneState(state);
   next.pendingCard = null;
-
-  runUpkeep(next, 'player');
 
   if (next.hand.length > next.handLimit) {
     next.phase = 'discarding';
@@ -1315,6 +1375,9 @@ export function confirmDiscard(
  * in between.
  */
 function beginEnemyTurn(state: CombatState): CombatState {
+  // The player turn is over: anyone who slept through it is back on their feet.
+  runRecovery(state);
+
   checkBattleEnd(state);
   if (state.phase === 'victory' || state.phase === 'defeat') return state;
 
@@ -1378,7 +1441,10 @@ export function stepEnemyTurn(state: CombatState, content: CombatContent): Comba
 
 /** Enemy upkeep, then the turn passes back to the player. */
 function finishEnemyTurn(state: CombatState): CombatState {
-  runUpkeep(state, 'enemy');
+  // The round closes here, so this is where both sides' statuses tick and where
+  // anyone exhausted on the player's turn finally wakes.
+  runStatusUpkeep(state);
+  runRecovery(state);
   checkBattleEnd(state);
 
   if (state.phase === 'victory' || state.phase === 'defeat') return state;
@@ -1443,7 +1509,7 @@ export function enemyStaminaCost(action: EnemyAction): number {
     }
   }
 
-  return Math.round(power / 4);
+  return Math.round(power / ENEMY_POWER_PER_STAMINA);
 }
 
 /**

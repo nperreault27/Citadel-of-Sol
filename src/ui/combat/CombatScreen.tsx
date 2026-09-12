@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { EventBus } from '@/bridge/EventBus';
 import { COMBAT_CONTENT } from '@/game/combat/content';
 import { canPlayCard, cardDefOf, legalTargets } from '@/game/combat/engine';
@@ -34,6 +34,30 @@ export function CombatScreen() {
   // transition, and a sheet holding the one from three hits ago would sit there
   // quoting stale health while the fight went on underneath it.
   const [reading, setReading] = useState<string | null>(null);
+
+  // A press anywhere else puts the open label away. Once the player has read
+  // it, the next thing they do is aim, play or pass — none of which should
+  // leave a stale answer sitting over a panel, and none of which they should
+  // have to spend a tap to get back to.
+  //
+  // Capture phase, because a badge stops its own press from bubbling: without
+  // it this would never see the press that opens a label, only the ones that
+  // follow. Presses that start on a badge are skipped instead, since tapping
+  // the open badge already means "close" and tapping another means "show that
+  // one" — both of which `toggleTip` handles. The press is watched rather than
+  // swallowed, so whatever it was aimed at still happens.
+  useEffect(() => {
+    if (!tip) return;
+
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.status')) return;
+      setTip(null);
+    };
+
+    window.addEventListener('pointerdown', dismiss, true);
+    return () => window.removeEventListener('pointerdown', dismiss, true);
+  }, [tip]);
 
   if (!battle) return null;
 

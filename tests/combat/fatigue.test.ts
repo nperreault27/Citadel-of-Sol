@@ -8,7 +8,12 @@ import {
   selectCard,
 } from '@/game/combat/engine';
 import { stacksOf } from '@/game/combat/status';
-import { RESTING_DAMAGE_MULTIPLIER, computeDamage, fatigueMultiplier } from '@/game/combat/stats';
+import {
+  computeDamage,
+  DEFENSE_K,
+  fatigueMultiplier,
+  RESTING_DAMAGE_MULTIPLIER,
+} from '@/game/combat/stats';
 import { defaultDeck, DEFAULT_PARTY, ROSTER, characterById } from '@/game/combat/content';
 import { expandDeck } from '@/game/combat/deckbuilding';
 import type {
@@ -215,7 +220,7 @@ describe('damage against a resting character', () => {
     const target = foe({ defense: 20 });
 
     expect(computeDamage(attacker, target, 100)).toBe(
-      Math.round(attacker.attack * 1 * (50 / (50 + 20)))
+      Math.round(attacker.attack * 1 * (DEFENSE_K / (DEFENSE_K + 20)))
     );
   });
 });

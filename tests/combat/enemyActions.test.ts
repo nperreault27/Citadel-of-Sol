@@ -125,9 +125,10 @@ describe('what an enemy action costs', () => {
       description: 'Hit hard.',
       weight: 1,
       target: 'oneEnemy',
-      effects: [{ type: 'damage', power: 80 }],
+      effects: [{ type: 'damage', power: 92 }],
     };
 
+    // The Ogre's Smash, at its real power: three of them and it is winded.
     expect(enemyStaminaCost(smash)).toBe(20);
   });
 
@@ -175,7 +176,9 @@ describe('what an enemy action costs', () => {
       description: 'Chain lightning.',
       weight: 1,
       target: 'oneEnemy',
-      effects: [{ type: 'chainDamage', power: 40, continueChance: 0.8, maxHits: 50 }],
+      effects: [
+        { type: 'chainDamage', power: 46, continueChance: 0.8, redirectChance: 0.85, maxHits: 50 },
+      ],
     };
 
     // A cost that scaled with the roll could not be printed on the move sheet

@@ -116,10 +116,22 @@ export interface Combatant {
   downed: boolean;
 
   /**
-   * Stamina hit 0 this turn, so this character cannot act for the remainder of
-   * it. Cleared and stamina refilled during end-of-turn upkeep.
+   * Stamina hit 0, so this character is benched and takes extra damage.
+   *
+   * A rest always covers a full turn: exhaust yourself on your own turn and you
+   * are still down through the whole of the enemy's, waking as it ends.
    */
   resting: boolean;
+
+  /**
+   * Whether this character was already resting when the current turn opened.
+   *
+   * Engine bookkeeping, refreshed at every turn start, and what makes "rest for
+   * a full turn" precise — only a rest that was already running when the turn
+   * began ends when that turn does. A rest that starts mid-turn, from a heavy
+   * card or a stamina drain landing, waits for the next one.
+   */
+  restingSinceTurnStart?: boolean;
 }
 
 // ── Cards ───────────────────────────────────────────────────────────────────
@@ -195,15 +207,24 @@ export type CardEffect =
   /** Asks the player to discard one card, then draws. */
   | { type: 'discardThenDraw'; draw: number }
   /**
-   * Emrys's chain: hits the chosen target, then keeps arcing to a *different*
-   * enemy while the rolls keep coming up. Nothing caps it but the roll, so the
-   * chain can double back to an enemy it already hit.
+   * Emrys's chain: hits the chosen target, then keeps arcing while the rolls
+   * keep coming up. Nothing caps it but the rolls, so the chain can double back
+   * to an enemy it already hit.
    */
   | {
       type: 'chainDamage';
       power: number;
       /** Probability the chain jumps again after each hit. */
       continueChance: number;
+      /**
+       * Probability a jump lands on someone other than the enemy just struck.
+       *
+       * Separate from `continueChance` because they answer different questions:
+       * that one is how long the chain runs, this one is how far it spreads.
+       * With nobody else standing the bolt stays put whatever this says, which
+       * is what keeps a chain into a lone enemy worth its energy.
+       */
+      redirectChance: number;
       /** Safety valve, not a design cap — see the engine. */
       maxHits: number;
     }

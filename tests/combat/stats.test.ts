@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeDamage,
+  DEFENSE_K,
   decideFirstTeam,
   effectiveAttack,
   mitigation,
@@ -90,11 +91,13 @@ describe('effectiveAttack', () => {
 });
 
 describe('mitigation', () => {
-  it('is 50/(50+DEF)', () => {
+  // Written against K rather than its current value: the curve is the rule, the
+  // number is a dial, and a tuning pass should not have to edit this.
+  it('is K/(K+DEF)', () => {
     expect(mitigation(0)).toBe(1);
-    expect(mitigation(50)).toBeCloseTo(0.5, 10);
-    expect(mitigation(100)).toBeCloseTo(1 / 3, 10);
-    expect(mitigation(150)).toBeCloseTo(0.25, 10);
+    expect(mitigation(DEFENSE_K)).toBeCloseTo(0.5, 10);
+    expect(mitigation(DEFENSE_K * 2)).toBeCloseTo(1 / 3, 10);
+    expect(mitigation(DEFENSE_K * 3)).toBeCloseTo(0.25, 10);
   });
 
   it('never fully negates a hit', () => {
@@ -121,15 +124,15 @@ describe('computeDamage', () => {
   });
 
   it('applies the mitigation curve', () => {
-    // 100 attack x 70% power = 70 raw, halved by DEF 50.
+    // 100 attack x 70% power = 70 raw, halved by Defense equal to K.
     const attacker = combatant({ attack: 100 });
-    expect(computeDamage(attacker, combatant({ defense: 50 }), 70)).toBe(35);
+    expect(computeDamage(attacker, combatant({ defense: DEFENSE_K }), 70)).toBe(35);
   });
 
   it('combines Strength with mitigation', () => {
-    // 100 x 1.3 = 130 attack, x 70% = 91 raw, x 50/(50+50) = 45.5 → 46.
+    // 100 x 1.3 = 130 attack, x 70% = 91 raw, halved = 45.5 → 46.
     const attacker = combatant({ attack: 100, statuses: [strength(1)] });
-    expect(computeDamage(attacker, combatant({ defense: 50 }), 70)).toBe(46);
+    expect(computeDamage(attacker, combatant({ defense: DEFENSE_K }), 70)).toBe(46);
   });
 
   it('always does at least 1', () => {

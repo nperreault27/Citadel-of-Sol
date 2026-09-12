@@ -54,7 +54,9 @@ const CARDS: Record<string, CardDefinition> = {
     energyCost: 2,
     staminaCost: 10,
     target: 'oneEnemy',
-    effects: [{ type: 'chainDamage', power: 20, continueChance: 0.8, maxHits: 50 }],
+    effects: [
+      { type: 'chainDamage', power: 20, continueChance: 0.8, redirectChance: 0.85, maxHits: 50 },
+    ],
   },
   arcOnce: {
     id: 'arcOnce',
@@ -67,7 +69,9 @@ const CARDS: Record<string, CardDefinition> = {
     staminaCost: 10,
     target: 'oneEnemy',
     // Never continues, so the chain is exactly one hit.
-    effects: [{ type: 'chainDamage', power: 20, continueChance: 0, maxHits: 50 }],
+    effects: [
+      { type: 'chainDamage', power: 20, continueChance: 0, redirectChance: 0.85, maxHits: 50 },
+    ],
   },
   arcAlways: {
     id: 'arcAlways',
@@ -80,7 +84,39 @@ const CARDS: Record<string, CardDefinition> = {
     staminaCost: 10,
     target: 'oneEnemy',
     // Always continues, so only maxHits or a lack of targets can stop it.
-    effects: [{ type: 'chainDamage', power: 5, continueChance: 1, maxHits: 6 }],
+    effects: [
+      { type: 'chainDamage', power: 5, continueChance: 1, redirectChance: 0.85, maxHits: 6 },
+    ],
+  },
+  // The two ends of the redirect roll, so the weighting can be read off the
+  // result instead of inferred from a distribution.
+  arcJump: {
+    id: 'arcJump',
+    tier: 'basic',
+    name: 'Arc Jump',
+    description: '',
+    brief: '',
+    ownerId: 'caster',
+    energyCost: 2,
+    staminaCost: 10,
+    target: 'oneEnemy',
+    effects: [
+      { type: 'chainDamage', power: 5, continueChance: 1, redirectChance: 1, maxHits: 6 },
+    ],
+  },
+  arcStay: {
+    id: 'arcStay',
+    tier: 'basic',
+    name: 'Arc Stay',
+    description: '',
+    brief: '',
+    ownerId: 'caster',
+    energyCost: 2,
+    staminaCost: 10,
+    target: 'oneEnemy',
+    effects: [
+      { type: 'chainDamage', power: 5, continueChance: 1, redirectChance: 0, maxHits: 6 },
+    ],
   },
   reserve: {
     id: 'reserve',
@@ -211,6 +247,32 @@ describe('chain damage', () => {
     // 6 hits at power 5, wherever they land.
     expect(totalEnemyDamage(before.state, after)).toBe(30);
     expect(after.combatants['a']!.health).toBeLessThan(200);
+  });
+
+  it('moves on every time when the redirect roll always hits', () => {
+    // Two enemies and a bolt that must find someone new: the chain has to
+    // alternate, so six hits split three and three.
+    const { state, content } = battle({
+      combatants: [unit(), foe({ id: 'a' }), foe({ id: 'b' })],
+      deck: Array.from({ length: 12 }, () => 'arcJump'),
+    });
+
+    const after = play(state, content, 'arcJump', 'a');
+
+    expect(after.combatants['a']?.health).toBe(185);
+    expect(after.combatants['b']?.health).toBe(185);
+  });
+
+  it('stays put every time when the redirect roll never hits', () => {
+    const { state, content } = battle({
+      combatants: [unit(), foe({ id: 'a' }), foe({ id: 'b' })],
+      deck: Array.from({ length: 12 }, () => 'arcStay'),
+    });
+
+    const after = play(state, content, 'arcStay', 'a');
+
+    expect(after.combatants['a']?.health).toBe(170);
+    expect(after.combatants['b']?.health).toBe(200);
   });
 
   it('keeps striking a lone enemy rather than fizzling', () => {

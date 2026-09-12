@@ -6,7 +6,12 @@ import {
   resolveEnemyTurn,
   selectCard,
 } from '@/game/combat/engine';
-import { effectiveDefense, mitigation } from '@/game/combat/stats';
+import {
+  BLEED_MULTIPLIER,
+  effectiveDefense,
+  mitigation,
+  poisonTickDamage,
+} from '@/game/combat/stats';
 import type {
   CardDefinition,
   Combatant,
@@ -257,12 +262,11 @@ describe('absorbing damage', () => {
     const after = passTurn(state, content);
 
     expect(after.combatants['thane']?.shield).toBe(500);
-    // 2 stacks at 5% of 200.
-    expect(after.combatants['thane']?.health).toBe(180);
+    expect(after.combatants['thane']?.health).toBe(200 - poisonTickDamage(2, 200));
   });
 
-  it('absorbs a bleed-doubled hit at its doubled size', () => {
-    // Bleed doubles the damage first; the shield then eats the bigger number.
+  it('absorbs a bleed-amplified hit at its amplified size', () => {
+    // Bleed amplifies the damage first; the shield then eats the bigger number.
     const { state, content } = battle({
       combatants: [
         unit({ shield: 200, statuses: [{ kind: 'bleed', stacks: 1, duration: PERMANENT }] }),
@@ -274,7 +278,7 @@ describe('absorbing damage', () => {
     const after = passTurn(state, content);
 
     expect(after.combatants['thane']?.health).toBe(200);
-    expect(after.combatants['thane']?.shield).toBe(100);
+    expect(after.combatants['thane']?.shield).toBe(200 - Math.round(50 * BLEED_MULTIPLIER));
   });
 
   it('cannot stop a hit once it is spent', () => {
@@ -335,12 +339,14 @@ describe('defense up', () => {
 
   it('has diminishing returns, because mitigation already curves', () => {
     // Worth flagging: the raw stat goes up 30% but the damage reduction is far
-    // smaller, and smaller still on an already-tanky character.
+    // smaller, and smaller still on an already-tanky character. How much
+    // smaller tracks DEFENSE_K — a higher K flattens Defense — so this brackets
+    // the claim rather than pinning a figure.
     const oneStack = mitigation(effectiveDefense(unit({ defense: 50, statuses: [{ kind: 'defenseUp', stacks: 1, duration: PERMANENT }] })));
     const bare = mitigation(50);
 
     const reduction = 1 - oneStack / bare;
-    expect(reduction).toBeGreaterThan(0.1);
+    expect(reduction).toBeGreaterThan(0.05);
     expect(reduction).toBeLessThan(0.3);
   });
 

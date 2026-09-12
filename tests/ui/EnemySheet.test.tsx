@@ -5,7 +5,8 @@ import { CombatScreen } from '@/ui/combat/CombatScreen';
 import { combatStore } from '@/state/combatStore';
 import { gameStore } from '@/state/store';
 import { COMBAT_CONTENT, defaultDeck } from '@/game/combat/content';
-import { cardDefOf } from '@/game/combat/engine';
+import { cardDefOf, cardPower } from '@/game/combat/engine';
+import { mitigation } from '@/game/combat/stats';
 
 const PARTY = ['ivy', 'saber', 'cask'];
 
@@ -90,9 +91,13 @@ describe('reading an enemy', () => {
     await user.click(enemyPanel(container));
 
     // Power is a percentage of the user's Attack whoever is holding the card,
-    // so the Ogre's 80 means what Bruno's 80 would.
-    expect(screen.getByText('Power 80')).toBeInTheDocument();
-    expect(screen.getByText('Power 45')).toBeInTheDocument();
+    // so the Ogre's number means what Bruno's would. Read off content rather
+    // than pinned here, so a tuning pass lands on the moves and not on this.
+    const [smash, sweep] = COMBAT_CONTENT.enemyActions['ogre'] ?? [];
+    if (!smash || !sweep) throw new Error('no ogre moves');
+
+    expect(screen.getByText(`Power ${cardPower(smash)}`)).toBeInTheDocument();
+    expect(screen.getByText(`Power ${cardPower(sweep)}`)).toBeInTheDocument();
   });
 
   it('says how often each move comes up', async () => {
@@ -134,8 +139,10 @@ describe('reading an enemy', () => {
 
     expect(within(panel).getByText('DEF')).toBeInTheDocument();
     expect(within(panel).getByText('40')).toBeInTheDocument();
-    // Defense means nothing without the curve behind it: 50/(50+40) is 56%.
-    expect(within(panel).getByText('takes 56%')).toBeInTheDocument();
+    // Defense means nothing without the curve behind it, so the sheet prints
+    // what the number actually buys rather than the number alone.
+    const taken = Math.round(mitigation(40) * 100);
+    expect(within(panel).getByText(`takes ${taken}%`)).toBeInTheDocument();
   });
 
   it('reports Attack after the statuses bending it, not as printed', async () => {

@@ -10,6 +10,7 @@ import {
   legalTargets,
   selectCard,
 } from '@/game/combat/engine';
+import { stacksOf } from '@/game/combat/status';
 import type {
   CardDefinition,
   Combatant,
@@ -25,6 +26,7 @@ import type {
  */
 
 const PERMANENT: StatusDuration = { kind: 'permanent' };
+const ONE_TURN: StatusDuration = { kind: 'turns', remaining: 1 };
 
 function hero(overrides: Partial<Combatant> = {}): Combatant {
   return {
@@ -86,6 +88,30 @@ const CARDS: Record<string, CardDefinition> = {
     staminaCost: 10,
     target: 'self',
     effects: [{ type: 'status', kind: 'strength', stacks: 1, duration: PERMANENT }],
+  },
+  rally: {
+    id: 'rally',
+    tier: 'basic',
+    name: 'Rally',
+    description: '',
+    brief: '',
+    ownerId: 'hero',
+    energyCost: 1,
+    staminaCost: 10,
+    target: 'self',
+    effects: [{ type: 'status', kind: 'strength', stacks: 1, duration: ONE_TURN }],
+  },
+  snare: {
+    id: 'snare',
+    tier: 'basic',
+    name: 'Snare',
+    description: '',
+    brief: '',
+    ownerId: 'hero',
+    energyCost: 1,
+    staminaCost: 10,
+    target: 'oneEnemy',
+    effects: [{ type: 'status', kind: 'weakness', stacks: 1, duration: ONE_TURN }],
   },
   mend: {
     id: 'mend',
@@ -303,6 +329,70 @@ describe('stamina and resting', () => {
     const nextTurn = passTurn(spent, c);
 
     expect(canPlayCard(nextTurn, c, findInHand(nextTurn, 'heavy')).ok).toBe(true);
+  });
+
+  it('lasts through the enemy turn, not just the remainder of your own', () => {
+    // Exhausting yourself has to cost something. Waking at your own end of turn
+    // would mean it cost nothing at all: the enemy would never catch you asleep.
+    const { state, content: c } = battle({ deck: Array.from({ length: 12 }, () => 'heavy') });
+    const spent = chooseTarget(selectCard(state, c, findInHand(state, 'heavy')), c, 'foe');
+
+    const enemyTurn = endPlayerTurn(spent, c);
+    expect(enemyTurn.combatants['hero']?.resting).toBe(true);
+
+    const after = resolveEnemyTurn(enemyTurn, c);
+    expect(after.combatants['hero']?.resting).toBe(false);
+    expect(after.combatants['hero']?.stamina).toBe(100);
+  });
+
+  it('benches an enemy that exhausts itself for the whole of the player turn', () => {
+    // The mirror of the rule above: the foe spends its last stamina biting, so
+    // it is asleep — and taking extra damage — for all of the player's turn.
+    const { state, content: c } = battle({
+      combatants: [hero({ health: 300, maxHealth: 300 }), foe({ stamina: 10 })],
+      enemyActions: { foe: BITE },
+      deck: Array.from({ length: 12 }, () => 'strike'),
+    });
+
+    const bitten = passTurn(state, c);
+    expect(bitten.combatants['foe']?.resting).toBe(true);
+
+    // It wakes as that turn ends, in time to act on the turn after.
+    const after = passTurn(bitten, c);
+    expect(after.combatants['foe']?.resting).toBe(false);
+    expect(after.combatants['hero']?.health).toBeLessThan(bitten.combatants['hero']!.health);
+  });
+});
+
+describe('turn-long statuses', () => {
+  it('keeps a buff played on your turn up for the enemy turn', () => {
+    const { state, content: c } = battle({
+      deck: Array.from({ length: 12 }, () => 'rally'),
+      enemyActions: { foe: BITE },
+    });
+
+    const queued = endPlayerTurn(selectCard(state, c, findInHand(state, 'rally')), c);
+    expect(stacksOf(queued.combatants['hero']?.statuses ?? [], 'strength')).toBe(1);
+
+    const after = resolveEnemyTurn(queued, c);
+    expect(stacksOf(after.combatants['hero']?.statuses ?? [], 'strength')).toBe(0);
+  });
+
+  it('keeps a debuff hung on an enemy up until they have acted under it', () => {
+    const { state, content: c } = battle({
+      deck: Array.from({ length: 12 }, () => 'snare'),
+      enemyActions: { foe: BITE },
+    });
+
+    const queued = endPlayerTurn(
+      chooseTarget(selectCard(state, c, findInHand(state, 'snare')), c, 'foe'),
+      c
+    );
+    expect(stacksOf(queued.combatants['foe']?.statuses ?? [], 'weakness')).toBe(1);
+
+    // Both sides tick at the same moment — the close of the enemy turn.
+    const after = resolveEnemyTurn(queued, c);
+    expect(stacksOf(after.combatants['foe']?.statuses ?? [], 'weakness')).toBe(0);
   });
 });
 

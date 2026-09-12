@@ -11,6 +11,14 @@
  *   Defense  mitigation is 50/(50+DEF), so DEF 50 halves incoming damage.
  *   Stamina  100 baseline; a hit worth 25% of max health drains half the bar.
  *            At zero the character sits out the rest of the turn.
+ *
+ * Roles:
+ *   DPS      removes enemy HP.
+ *   Sustain  keeps HP on your own side — healing, shielding, or refusing
+ *            damage outright.
+ *   Support  changes the terms of the fight without doing either.
+ *   A second role in brackets is real but not co-equal: it is what the
+ *   character also does, not what they are picked for.
  */
 
 import { POISON_DURATION_TURNS } from './stats';
@@ -52,7 +60,7 @@ const POISON_TIMER: StatusDuration = { kind: 'turns', remaining: POISON_DURATION
 // ── The party ───────────────────────────────────────────────────────────────
 
 /**
- * Ivy — The Chemist. Trait: Poison.
+ * Ivy — The Chemist. Role: DPS. Trait: Poison.
  *
  * Deals little up front and wins long fights. Her poison ignores Defense, so
  * she is the answer to targets the rest of the party bounces off.
@@ -61,13 +69,13 @@ export const IVY: Combatant = {
   id: 'ivy',
   name: 'Ivy',
   team: 'player',
-  health: 160,
-  maxHealth: 160,
+  health: 200,
+  maxHealth: 200,
   stamina: 100,
   maxStamina: 100,
   attack: 95,
-  defense: 22,
-  speed: 11,
+  defense: 30,
+  speed: 15,
   statuses: [],
   shield: 0,
   downed: false,
@@ -75,21 +83,22 @@ export const IVY: Combatant = {
 };
 
 /**
- * Saber — The Assassin. Trait: Bleed.
+ * Saber — The Assassin. Role: Support (dps). Trait: Bleed.
  *
- * Highest Attack and lowest Defense. Bleed doubles her next hit on a target, so
- * her damage comes from setting up and then cashing in.
+ * Marks targets rather than finishing them: a Bleed stack doubles the next hit
+ * on that target whoever lands it, so the whole party cashes in what she sets
+ * up. Second-highest Attack, and thin enough that she has to pick her moment.
  */
 export const SABER: Combatant = {
   id: 'saber',
   name: 'Saber',
   team: 'player',
-  health: 150,
-  maxHealth: 150,
+  health: 220,
+  maxHealth: 220,
   stamina: 100,
   maxStamina: 100,
-  attack: 115,
-  defense: 18,
+  attack: 100,
+  defense: 22,
   speed: 16,
   statuses: [],
   shield: 0,
@@ -98,11 +107,11 @@ export const SABER: Combatant = {
 };
 
 /**
- * Cask — The Blunderbuss. Trait: stamina drain.
+ * Cask — The Blunderbuss. Role: Support (dps). Trait: stamina drain.
  *
  * Steals turns rather than dealing damage. Draining an enemy to zero during
- * your turn benches them for the whole of theirs, because the rest flag is only
- * cleared during their own end-of-turn upkeep.
+ * your turn benches them for the whole of theirs, because a rest always covers
+ * a full turn — and the turn it covers here is the one they were about to take.
  */
 export const CASK: Combatant = {
   id: 'cask',
@@ -112,8 +121,8 @@ export const CASK: Combatant = {
   maxHealth: 210,
   stamina: 120,
   maxStamina: 120,
-  attack: 90,
-  defense: 45,
+  attack: 105,
+  defense: 30,
   speed: 7,
   statuses: [],
   shield: 0,
@@ -122,7 +131,7 @@ export const CASK: Combatant = {
 };
 
 /**
- * Lyra — The Bard. Trait: Fatigue.
+ * Lyra — The Bard. Role: Support. Trait: Fatigue.
  *
  * Deals almost no damage herself. She makes an ally hit harder and makes the
  * enemy tire faster, so her value is entirely in what the rest of the team does
@@ -132,13 +141,13 @@ export const LYRA: Combatant = {
   id: 'lyra',
   name: 'Lyra',
   team: 'player',
-  health: 165,
-  maxHealth: 165,
+  health: 200,
+  maxHealth: 200,
   stamina: 100,
   maxStamina: 100,
-  attack: 85,
-  defense: 30,
-  speed: 13,
+  attack: 75,
+  defense: 35,
+  speed: 15,
   statuses: [],
   shield: 0,
   downed: false,
@@ -146,7 +155,7 @@ export const LYRA: Combatant = {
 };
 
 /**
- * Bruno — The Fighter. Trait: raw damage.
+ * Bruno — The Fighter. Role: DPS. Trait: raw damage.
  *
  * No status mechanic at all, which makes him the baseline everything else is
  * measured against. His max stamina is deliberately 100 so Haymaker's cost
@@ -156,12 +165,12 @@ export const BRUNO: Combatant = {
   id: 'bruno',
   name: 'Bruno',
   team: 'player',
-  health: 230,
+  health: 150,
   maxHealth: 150,
   stamina: 100,
   maxStamina: 100,
   attack: 120,
-  defense: 35,
+  defense: 30,
   speed: 9,
   statuses: [],
   shield: 0,
@@ -170,11 +179,11 @@ export const BRUNO: Combatant = {
 };
 
 /**
- * Hollis — The Anvil. Trait: defence.
+ * Hollis — The Anvil. Role: Sustain (support). Trait: defence.
  *
- * The only character who protects the rest of the team rather than adding to
- * the damage. Highest Defense and health in the roster, lowest Attack — his
- * basic exists mostly so Counter Attack has something to fire.
+ * The character who protects the rest of the team by standing in front of it
+ * rather than by handing out shields. Highest Defense in the roster, and a
+ * basic that exists mostly so Counter Attack has something to fire.
  */
 export const HOLLIS: Combatant = {
   id: 'hollis',
@@ -184,8 +193,8 @@ export const HOLLIS: Combatant = {
   maxHealth: 280,
   stamina: 120,
   maxStamina: 120,
-  attack: 75,
-  defense: 65,
+  attack: 85,
+  defense: 60,
   speed: 5,
   statuses: [],
   shield: 0,
@@ -194,7 +203,7 @@ export const HOLLIS: Combatant = {
 };
 
 /**
- * Emrys - The Mage. Trait: chain damage.
+ * Emrys - The Mage. Role: DPS (support). Trait: chain damage.
  *
  * High Attack and almost no Defense. Arc is the only card in the game whose
  * output is genuinely random, so he is the swingy pick.
@@ -203,13 +212,13 @@ export const EMRYS: Combatant = {
   id: 'emrys',
   name: 'Emrys',
   team: 'player',
-  health: 145,
-  maxHealth: 145,
+  health: 165,
+  maxHealth: 165,
   stamina: 100,
   maxStamina: 100,
-  attack: 110,
-  defense: 20,
-  speed: 12,
+  attack: 125,
+  defense: 27,
+  speed: 15,
   statuses: [],
   shield: 0,
   downed: false,
@@ -217,7 +226,7 @@ export const EMRYS: Combatant = {
 };
 
 /**
- * Vesper - The Vampire. Trait: health as a resource.
+ * Vesper - The Vampire. Role: DPS (sustain). Trait: health as a resource.
  *
  * Spends her own health to hit harder and takes it back off the enemy. Sturdier
  * than she looks, because she has to be: Bloodlet costs 15% of her max health
@@ -227,12 +236,12 @@ export const VESPER: Combatant = {
   id: 'vesper',
   name: 'Vesper',
   team: 'player',
-  health: 190,
-  maxHealth: 190,
-  stamina: 100,
-  maxStamina: 100,
-  attack: 105,
-  defense: 30,
+  health: 220,
+  maxHealth: 220,
+  stamina: 140,
+  maxStamina: 140,
+  attack: 120,
+  defense: 18,
   speed: 14,
   statuses: [],
   shield: 0,
@@ -241,22 +250,22 @@ export const VESPER: Combatant = {
 };
 
 /**
- * Thane - The Shielder. Trait: shields.
+ * Thane - The Shielder. Role: Sustain. Trait: shields.
  *
  * His shields are sized from his own max health, so his bulk is literally what
- * he hands out - the same 60 whether it lands on Emrys or on Hollis. Poison
+ * he hands out - the same 75 whether it lands on Emrys or on Hollis. Poison
  * ignores shields entirely, which makes Ivy his hard counter.
  */
 export const THANE: Combatant = {
   id: 'thane',
   name: 'Thane',
   team: 'player',
-  health: 240,
-  maxHealth: 240,
+  health: 300,
+  maxHealth: 300,
   stamina: 110,
   maxStamina: 110,
   attack: 70,
-  defense: 55,
+  defense: 40,
   speed: 8,
   statuses: [],
   shield: 0,
@@ -602,7 +611,7 @@ const CARD_LIST: CardDefinition[] = [
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [
-      { type: 'damage', power: 45 },
+      { type: 'damage', power: 52 },
       { type: 'status', kind: 'poison', stacks: 1, duration: POISON_TIMER },
     ],
   },
@@ -650,7 +659,7 @@ const CARD_LIST: CardDefinition[] = [
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [
-      { type: 'damage', power: 50 },
+      { type: 'damage', power: 57 },
       { type: 'status', kind: 'bleed', stacks: 1, duration: PERMANENT },
     ],
   },
@@ -665,7 +674,7 @@ const CARD_LIST: CardDefinition[] = [
     staminaCost: 40,
     target: 'allEnemies',
     effects: [
-      { type: 'damage', power: 35 },
+      { type: 'damage', power: 40 },
       { type: 'status', kind: 'bleed', stacks: 1, duration: PERMANENT },
     ],
   },
@@ -680,7 +689,7 @@ const CARD_LIST: CardDefinition[] = [
     staminaCost: 30,
     target: 'none',
     // The generated strikes cost no extra stamina — the real price is the hand.
-    effects: [{ type: 'discardHandAndAttack', power: 50, bleedStacks: 1 }],
+    effects: [{ type: 'discardHandAndAttack', power: 57, bleedStacks: 1 }],
   },
 
   // ══ Cask — Stamina drain ══
@@ -695,7 +704,7 @@ const CARD_LIST: CardDefinition[] = [
     staminaCost: 25,
     target: 'oneEnemy',
     effects: [
-      { type: 'damage', power: 45 },
+      { type: 'damage', power: 52 },
       { type: 'drainStamina', amount: 40 },
     ],
   },
@@ -712,10 +721,10 @@ const CARD_LIST: CardDefinition[] = [
     effects: [
       {
         type: 'damage',
-        power: 35,
+        power: 40,
         // Exponent 2: a half-drained target yields only a quarter of the bonus,
         // so this is weak on a fresh enemy and brutal on a worn-down one.
-        scaling: { kind: 'missingStamina', bonusPower: 75, exponent: 2 },
+        scaling: { kind: 'missingStamina', bonusPower: 86, exponent: 2 },
       },
     ],
     energyOnStaminaEmpty: 1,
@@ -835,7 +844,7 @@ const CARD_LIST: CardDefinition[] = [
     staminaCost: 20,
     target: 'oneEnemy',
     // Counter Attack fires at this same power — see COUNTER_ATTACK_POWER.
-    effects: [{ type: 'damage', power: 45 }],
+    effects: [{ type: 'damage', power: 52 }],
   },
   {
     id: 'hollis.goad',
@@ -885,13 +894,13 @@ const CARD_LIST: CardDefinition[] = [
     energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 55 }],
+    effects: [{ type: 'damage', power: 63 }],
   },
   {
     id: 'emrys.arc',
     tier: 'special',
     name: 'Arc',
-    description: 'Strike an enemy, then keep arcing to any enemy while the lightning holds.',
+    description: 'Strike an enemy, then keep arcing — usually onward — while the lightning holds.',
     brief: 'Lightning chains enemies',
     ownerId: 'emrys',
     energyCost: 2,
@@ -900,11 +909,15 @@ const CARD_LIST: CardDefinition[] = [
     effects: [
       {
         type: 'chainDamage',
-        power: 30,
+        power: 35,
         // Nothing bounds the chain but this roll — it may strike the same enemy
         // repeatedly — so each hit is modest and the total is a long thin tail
         // rather than a reliable burst.
         continueChance: 0.8,
+        // Spread, not focus: a bounce nearly always finds someone new, which is
+        // what makes Arc the card for a crowd. Doubling back is the exception
+        // rather than a coin flip, and against a lone enemy it is all there is.
+        redirectChance: 0.85,
         // Safety valve only: at 80% the odds of reaching this are about 1 in
         // 70,000, so it never shapes play - it just stops a pathological loop.
         maxHits: 50,
@@ -936,7 +949,7 @@ const CARD_LIST: CardDefinition[] = [
     staminaCost: 20,
     target: 'oneEnemy',
     healthCostFraction: 0.15,
-    effects: [{ type: 'damage', power: 85 }],
+    effects: [{ type: 'damage', power: 98 }],
   },
   {
     id: 'vesper.siphon',
@@ -948,7 +961,7 @@ const CARD_LIST: CardDefinition[] = [
     energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 60, lifesteal: 0.5 }],
+    effects: [{ type: 'damage', power: 69, lifesteal: 0.5 }],
   },
   {
     id: 'vesper.undying',
@@ -1133,7 +1146,7 @@ const OGRE_ACTIONS: EnemyAction[] = [
     description: 'Deal heavy damage to one of your party.',
     weight: 3,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 80 }],
+    effects: [{ type: 'damage', power: 92 }],
   },
   {
     id: 'ogre.sweep',
@@ -1141,7 +1154,7 @@ const OGRE_ACTIONS: EnemyAction[] = [
     description: 'Deal damage to your whole party.',
     weight: 1,
     target: 'allEnemies',
-    effects: [{ type: 'damage', power: 45 }],
+    effects: [{ type: 'damage', power: 52 }],
   },
 ];
 
@@ -1152,7 +1165,7 @@ const IMP_ACTIONS: EnemyAction[] = [
     description: 'Deal damage to one of your party.',
     weight: 3,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 60 }],
+    effects: [{ type: 'damage', power: 69 }],
   },
   {
     id: 'imp.jinx',
@@ -1177,7 +1190,7 @@ const RATKIN_ACTIONS: EnemyAction[] = [
     description: 'Deal damage to one of your party.',
     weight: 3,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 55 }],
+    effects: [{ type: 'damage', power: 63 }],
   },
   {
     id: 'ratkin.swarm',
@@ -1185,7 +1198,7 @@ const RATKIN_ACTIONS: EnemyAction[] = [
     description: 'Deal light damage to your whole party.',
     weight: 1,
     target: 'allEnemies',
-    effects: [{ type: 'damage', power: 28 }],
+    effects: [{ type: 'damage', power: 32 }],
   },
 ];
 
@@ -1203,7 +1216,7 @@ const BULWARK_ACTIONS: EnemyAction[] = [
     description: 'Deal heavy damage to one of your party.',
     weight: 3,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 85 }],
+    effects: [{ type: 'damage', power: 98 }],
   },
   {
     id: 'bulwark.tremor',
@@ -1211,7 +1224,7 @@ const BULWARK_ACTIONS: EnemyAction[] = [
     description: 'Deal damage to your whole party.',
     weight: 1,
     target: 'allEnemies',
-    effects: [{ type: 'damage', power: 45 }],
+    effects: [{ type: 'damage', power: 52 }],
   },
 ];
 
@@ -1230,7 +1243,7 @@ const ACOLYTE_ACTIONS: EnemyAction[] = [
     description: 'Deal light damage to one of your party.',
     weight: 2,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 40 }],
+    effects: [{ type: 'damage', power: 46 }],
   },
 ];
 
@@ -1253,7 +1266,7 @@ const SAPPER_ACTIONS: EnemyAction[] = [
       // so the drain buys tempo, not attrition. The damage is what actually
       // closes the fight, and without it the Sappers were an inconvenience
       // rather than a threat.
-      { type: 'damage', power: 62 },
+      { type: 'damage', power: 71 },
       { type: 'drainStamina', amount: 55 },
     ],
   },
@@ -1296,7 +1309,7 @@ const CANTOR_ACTIONS: EnemyAction[] = [
     description: 'Deal light damage to one of your party.',
     weight: 1,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 45 }],
+    effects: [{ type: 'damage', power: 52 }],
   },
 ];
 
@@ -1307,7 +1320,7 @@ const WARDEN_ACTIONS: EnemyAction[] = [
     description: 'Deal heavy damage to one of your party.',
     weight: 3,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 75 }],
+    effects: [{ type: 'damage', power: 86 }],
   },
   {
     id: 'warden.guard',
@@ -1333,7 +1346,7 @@ const REVENANT_ACTIONS: EnemyAction[] = [
     description: 'Deal damage to one of your party and heal for half of it.',
     weight: 3,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 70, lifesteal: 0.5 }],
+    effects: [{ type: 'damage', power: 81, lifesteal: 0.5 }],
   },
   {
     id: 'revenant.gorge',
@@ -1352,7 +1365,7 @@ const GHOUL_ACTIONS: EnemyAction[] = [
     description: 'Deal damage to one of your party.',
     weight: 3,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 55 }],
+    effects: [{ type: 'damage', power: 63 }],
   },
   {
     id: 'ghoul.feast',
@@ -1360,7 +1373,7 @@ const GHOUL_ACTIONS: EnemyAction[] = [
     description: 'Deal light damage to one of your party and heal for all of it.',
     weight: 1,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 35, lifesteal: 1 }],
+    effects: [{ type: 'damage', power: 40, lifesteal: 1 }],
   },
 ];
 
@@ -1378,7 +1391,7 @@ const HEXWEAVER_ACTIONS: EnemyAction[] = [
     description: 'Deal damage to one of your party.',
     weight: 2,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 60 }],
+    effects: [{ type: 'damage', power: 69 }],
   },
   {
     id: 'hexweaver.curse',
@@ -1412,7 +1425,7 @@ const TYRANT_ACTIONS: EnemyAction[] = [
     description: 'Deal heavy damage to your whole party.',
     weight: 3,
     target: 'allEnemies',
-    effects: [{ type: 'damage', power: 70 }],
+    effects: [{ type: 'damage', power: 81 }],
   },
   {
     id: 'tyrant.execute',
@@ -1420,7 +1433,7 @@ const TYRANT_ACTIONS: EnemyAction[] = [
     description: 'Deal enormous damage to one of your party.',
     weight: 2,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 120 }],
+    effects: [{ type: 'damage', power: 138 }],
   },
   {
     id: 'tyrant.sunder',
@@ -1482,7 +1495,7 @@ const BROODMOTHER_ACTIONS: EnemyAction[] = [
     description: 'Deal light damage to one of your party.',
     weight: 1,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 50 }],
+    effects: [{ type: 'damage', power: 57 }],
   },
 ];
 
@@ -1494,7 +1507,7 @@ const CHITTERLING_ACTIONS: EnemyAction[] = [
     description: 'Deal heavy damage to one of your party.',
     weight: 1,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 95 }],
+    effects: [{ type: 'damage', power: 109 }],
   },
 ];
 

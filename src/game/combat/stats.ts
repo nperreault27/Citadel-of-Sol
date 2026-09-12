@@ -22,13 +22,13 @@ export const STRENGTH_MULTIPLIER = 1.3;
 export const WEAKNESS_MULTIPLIER = 0.7;
 
 /** Each Poison stack deals this fraction of the victim's max health per tick. */
-export const POISON_TICK_FRACTION = 0.05;
+export const POISON_TICK_FRACTION = 0.04;
 
 /** Turns a Poison application lasts, so each stack ticks twice. */
 export const POISON_DURATION_TURNS = 2;
 
 /** Multiplier applied to an attack that consumes a Bleed stack. */
-export const BLEED_MULTIPLIER = 2;
+export const BLEED_MULTIPLIER = 1.5;
 
 /**
  * Multiplier applied to an attack on a resting character.
@@ -55,7 +55,7 @@ export const FATIGUE_MULTIPLIER = 1.2;
  * way that currently varies. If a second character ever gains Counter, this
  * should move onto the combatant so each one counters with their own.
  */
-export const COUNTER_ATTACK_POWER = 45;
+export const COUNTER_ATTACK_POWER = 52;
 
 /** Health an Undying stack restores when an enemy falls. */
 export const UNDYING_HEAL_FRACTION = 0.5;
@@ -71,7 +71,21 @@ export const UNDYING_HEAL_FRACTION = 0.5;
  * Set a little under a typical attack: supporting should tire an enemy slightly
  * less than swinging does, not cost it nothing.
  */
-export const SUPPORT_EFFECT_POWER = 40;
+export const SUPPORT_EFFECT_POWER = 46;
+
+/**
+ * Power an enemy spends per point of stamina.
+ *
+ * What matters here is how many moves an enemy gets before it has to rest —
+ * three Smashes and the Ogre is winded — and that number is a pacing decision,
+ * not a consequence of how the moves happen to be numbered. So when every power
+ * in the game went up 15%, this went up with them, from 4 to 4.6: a Smash at 92
+ * costs the same 20 it cost at 80.
+ *
+ * Change it to make enemies tire faster or slower. Changing power alone no
+ * longer does that, which is the point.
+ */
+export const ENEMY_POWER_PER_STAMINA = 4.6;
 
 /** Damage equal to this fraction of max health drains the maximum stamina. */
 export const STAMINA_DRAIN_PIVOT = 0.25;
