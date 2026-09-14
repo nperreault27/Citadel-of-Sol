@@ -48,7 +48,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 20 }],
@@ -154,7 +153,6 @@ describe('stepEnemyTurn', () => {
 
     expect(current.phase).toBe('selectCard');
     expect(current.activeTeam).toBe('player');
-    expect(current.energy).toBe(current.maxEnergy);
     expect(current.round).toBe(2);
     expect(current.enemyQueue).toEqual([]);
   });

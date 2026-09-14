@@ -7,7 +7,7 @@ import {
   selectCard,
 } from '@/game/combat/engine';
 import { stacksOf } from '@/game/combat/status';
-import { COUNTER_ATTACK_POWER } from '@/game/combat/stats';
+import { COUNTER_ATTACK_POWER, STAMINA_REGEN_FRACTION } from '@/game/combat/stats';
 import type {
   CardDefinition,
   Combatant,
@@ -58,7 +58,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'tank',
-    energyCost: 1,
     staminaCost: 10,
     target: 'self',
     effects: [{ type: 'status', kind: 'taunt', stacks: 1, duration: PER_TURN_STACK }],
@@ -70,7 +69,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'tank',
-    energyCost: 1,
     staminaCost: 10,
     target: 'self',
     effects: [{ type: 'status', kind: 'counter', stacks: 3, duration: PERMANENT }],
@@ -82,7 +80,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'tank',
-    energyCost: 3,
     staminaCost: 10,
     target: 'self',
     effects: [{ type: 'status', kind: 'immunity', stacks: 1, duration: UNTIL_NEXT_TURN }],
@@ -94,7 +91,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'tank',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 50 }],
@@ -106,7 +102,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'tank',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'status', kind: 'weakness', stacks: 1, duration: PERMANENT }],
@@ -187,7 +182,7 @@ describe('taunt', () => {
     expect(after.combatants['tank']!.health).toBeLessThan(400);
   });
 
-  it('is bypassed by an area attack', () => {
+  it('takes every hit of an area attack in place of the team', () => {
     const { state, content } = battle({
       combatants: [
         unit({ statuses: [{ kind: 'taunt', stacks: 2, duration: PER_TURN_STACK }] }),
@@ -198,7 +193,38 @@ describe('taunt', () => {
     });
 
     const after = passTurn(state, content);
-    expect(after.combatants['ally']!.health).toBeLessThan(400);
+    expect(after.combatants['ally']?.health).toBe(400);
+    // Two targets in the sweep, so two blows of 50 on the tank.
+    expect(after.combatants['tank']?.health).toBe(300);
+  });
+
+  it('lets an area attack land normally once the taunt is gone', () => {
+    const { state, content } = battle({
+      combatants: [unit(), ally(), foe()],
+      enemyActions: { foe: SWEEP },
+    });
+
+    const after = passTurn(state, content);
+    expect(after.combatants['ally']?.health).toBe(350);
+    expect(after.combatants['tank']?.health).toBe(350);
+  });
+
+  it('pulls a player area attack onto a taunting enemy', () => {
+    const cards: Record<string, CardDefinition> = {
+      ...CARDS,
+      blast: { ...CARDS.strike!, id: 'blast', target: 'allEnemies' },
+    };
+    const combatants = [
+      unit(),
+      foe({ id: 'a', statuses: [{ kind: 'taunt', stacks: 1, duration: PER_TURN_STACK }] }),
+      foe({ id: 'b' }),
+    ];
+    const state = createCombat({ combatants, deck: Array.from({ length: 12 }, () => 'blast'), seed: 42 });
+    const content: CombatContent = { cardDefs: cards, enemyActions: { a: [], b: [] } };
+
+    const after = play(state, content, 'blast');
+    expect(after.combatants['b']?.health).toBe(400);
+    expect(after.combatants['a']?.health).toBe(300);
   });
 
   it('draws blows but not curses', () => {
@@ -491,9 +517,16 @@ describe('immunity', () => {
       { id: 'sap', name: 'Sap', description: 'Drain the stamina of one of your party.', weight: 1, target: 'oneEnemy', effects: [{ type: 'drainStamina', amount: 40 }] },
     ];
 
+    // Starts one regeneration short of full, so when the player turn opens the
+    // bar is exactly full minus the drain, with nothing hidden by the cap.
+    const regen = Math.round(120 * STAMINA_REGEN_FRACTION);
+
     const { state, content } = battle({
       combatants: [
-        unit({ statuses: [{ kind: 'immunity', stacks: 1, duration: UNTIL_NEXT_TURN }] }),
+        unit({
+          stamina: 120 - regen,
+          statuses: [{ kind: 'immunity', stacks: 1, duration: UNTIL_NEXT_TURN }],
+        }),
         foe(),
       ],
       enemyActions: { foe: drainer },

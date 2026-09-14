@@ -13,8 +13,9 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "assets:placeholder": "node scripts/generate-placeholder-assets.mjs",
-    "balance": "vitest run --config vitest.probe.config.ts --reporter=verbose",
+    "balance": "vitest run --config vitest.probe.config.ts --reporter=verbose tests/combat/balance.probe.ts tests/combat/encounters.probe.ts tests/combat/swing.probe.ts",
     "swing": "vitest run --config vitest.probe.config.ts --reporter=verbose tests/combat/swing.probe.ts",
+    "kits": "vitest run --config vitest.probe.config.ts --reporter=verbose tests/combat/kits.probe.ts",
     "cap:sync": "npm run build && cap sync android",
     "cap:open": "cap open android"
   },

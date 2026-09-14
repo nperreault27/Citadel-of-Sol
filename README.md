@@ -25,7 +25,9 @@ browser's device emulation does not reproduce real touch behaviour.
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run assets:placeholder` | Regenerates placeholder art and the Tiled map |
-| `npm run balance` | Simulates 200 battles and reports win rate (see [Tuning](#tuning)) |
+| `npm run balance` | Simulates battles with a planning AI and reports win rates (see [Tuning](#tuning)) |
+| `npm run swing` | Just the character × team swing grid |
+| `npm run kits` | Per-character damage, deaths and card plays, plus build comparisons for Ignis and Marlo. Not part of `balance` |
 | `npm run cap:sync` | Build, then copy web assets into the Android project |
 | `npm run cap:open` | Open the Android project in Android Studio |
 
@@ -127,18 +129,22 @@ can never silently change the rules.
 **Decks.** All three equipped characters' decks shuffle into one shared draw pile, with
 each card tagged by its owner — playing it makes that character act and costs *their*
 stamina. Cards with `ownerId: null` are neutral team effects: no stamina, but they still
-need at least one character able to act. One hand of 5, one shared 5 energy per turn.
+need at least one character able to act, and they are **one use** — playing one moves it to
+the exhaust pile for the rest of the battle. One hand of 5. There is no energy: stamina is
+the only cost in the game.
 
 **Turn order.** Speed decides which team goes first, summed across living members and
 settled once at the start of the battle. It does nothing else.
 
-**Stamina** (base 100) is spent by acting and drained by being hit. At 0 the character sits
-out the rest of the turn and refills completely during end-of-turn upkeep — so a forced
-rest costs exactly the remainder of one turn. Overspending is allowed and intentional: a
-heavy card can be played on a sliver of stamina.
+**Stamina** (base 100) is spent by acting and drained by being hit. Every standing combatant,
+enemies included, regains **40% of max stamina** as their own team's turn opens. At 0 the
+character rests: benched for a full turn, taking **1.5x damage**, then waking with a full
+bar. Overspending is allowed and intentional: a heavy card can be played on a sliver of
+stamina.
 
-**Enemies** have no deck and no energy. Each picks from a weighted action list, and intents
-are deliberately not telegraphed. They do have stamina and can be staggered.
+**Enemies** have no deck. Each picks from a weighted action list, and intents are
+deliberately not telegraphed. They spend and regenerate stamina like the party and can be
+staggered.
 
 ### Animation
 
@@ -158,33 +164,37 @@ All of it collapses to near-instant under `prefers-reduced-motion`.
 
 ### The roster
 
-| | Trait | Basic (1) | Special (2) | Unique |
-| --- | --- | --- | --- | --- |
-| **Ivy** — The Chemist | Poison | Inject — damage + 1 Poison | Disperse — 2 Poison to all enemies | Cascade (2) — 1 Poison to all enemies, then every Poison lasts 1 turn longer |
-| **Saber** — The Assassin | Bleed | Sever — damage + 1 Bleed | Crossfade — AoE damage + 1 Bleed each | Exsanguinate (3) — discard your hand, one strike per card discarded |
-| **Cask** — The Blunderbuss | Stamina drain | Buckshot — damage + 40 stamina drain | Overdraw (1) — scales with missing stamina, refunds energy if it empties | Winded (3) — empty a target's stamina outright |
-| **Lyra** — The Bard | Fatigue | Refrain (0) — 1 Strength to an ally | Dirge (1) — 1 Fatigue to an enemy | Requiem (2) — 1 Fatigue to all enemies, or 3 if only one remains |
-| **Bruno** — The Fighter | Raw damage | Jab — 55 power | Hook — 137 power (2.5x) | Haymaker (3) — 275 power (5x), costs his whole stamina bar |
-| **Hollis** — The Anvil | Defence | Strike — 45 power | Goad (1) — Taunt +1 · Rebound (1) — Counter x3 | Ironclad (3) — take no damage until your next turn |
-| **Emrys** — The Mage | Chain damage | Bolt — 55 power | Arc (2) — 30 power, 80% to keep arcing · Reserve (1) — restore 40 stamina | — |
-| **Vesper** — The Vampire | Health as a resource | Bloodlet — pay 15% max HP for 85 power · Siphon — 60 power, heal half | Undying (2) — when an enemy falls, heal 50% or rise | — |
-| **Thane** — The Shielder | Shields | Ward — shield an ally for 25% of *his* max HP | Cover (2) — split 45% of his max HP across the team · Brace (0) — Defense Up | — |
+Stamina costs in brackets.
 
-**Nine characters, three equipped, and the deck is built by hand.** Flow is
+| | Trait | Basic | Special | Unique |
+| --- | --- | --- | --- | --- |
+| **Ivy** — The Chemist | Poison | Inject (20) — damage + 1 Poison | Disperse (40) — 2 Poison to all enemies | Cascade (40) — 1 Poison to all enemies, then every Poison lasts 1 turn longer |
+| **Saber** — The Assassin | Bleed | Sever (20) — damage + 50% chance of 1 Bleed | Crossfade (40) — AoE damage + 1 Bleed each | Exsanguinate (60) — discard your hand, one strike per card discarded |
+| **Cask** — The Blunderbuss | Stamina drain | Buckshot (25) — damage + 40 stamina drain | Overdraw (30) — scales with missing stamina, free if it empties them | Winded (60) — empty a target's stamina outright |
+| **Lyra** — The Bard | Fatigue | Refrain (10) — 1 Strength to an ally | Dirge (25) — 1 Fatigue to an enemy | Requiem (40) — 1 Fatigue to all enemies, or 3 if only one remains |
+| **Bruno** — The Fighter | Raw damage | Jab (20) — 55 power | Hook (50) — 137 power (2.5x) | Haymaker (100) — 275 power (5x), costs his whole stamina bar |
+| **Hollis** — The Anvil | Defence | Strike (20) — 52 power | Goad (20) — Taunt +1, Defense Up +1 · Rebound (25) — Counter x3 | Ironclad (40) — take no damage until your next turn |
+| **Emrys** — The Mage | Chain damage | Bolt (20) — 63 power | Arc (40) — 35 power, 80% to keep arcing | Reserve (20) — restore 40 stamina |
+| **Vesper** — The Vampire | Health as a resource | Bloodlet (20) — pay 15% max HP for 98 power | Siphon (20) — 69 power, heal half | Undying (40) — when an enemy falls, heal 50% or rise |
+| **Thane** — The Shielder | Shields | Ward (25) — shield an ally for 25% of *his* max HP | Cover (40) — split 45% of his max HP across the team | Brace (10) — Defense Up |
+| **Ignis** — The Pyromancer | Area damage | Fireball (20) — 30 power to all enemies | Firebolt (25) — 72 power | Fireball Barrage (60) — cast every Fireball in the draw pile plus one; those copies are discarded |
+| **Marlo** — The Quartermaster | Buffs and debuffs | Rally (10) — 1 Strength to an ally · Fortify (10) — 1 Defense Up to an ally | Demoralize (40) — 1 Weakness to all enemies · Expose (40) — 1 Defense Down to all enemies | Resupply (60) — restore all stamina to the whole team |
+
+**Eleven characters, three equipped, and the deck is built by hand.** Flow is
 Arena → roster (pick 3) → deck builder → fight.
 
 The rules live in `src/game/combat/deckbuilding.ts` — pure, like the rest of `combat/`:
 
 - **At least 20 cards.** No upper bound; a bigger deck just makes your good cards rarer.
 - **At most 7 per character**, so equipping someone is a budget as well as a slot.
-- **Copies capped by tier**: basic 4, special 2, unique 1.
+- **Copies capped by tier**: basic 4, special 2, unique 2.
 - **Neutral cards are selectable and count** toward the 20. They cap at 4 each, so a legal
   deck could be 16 neutrals and 4 character cards.
 
-Two consequences worth knowing. For a character with three cards `4 + 2 + 1 = 7` exactly, so
-maxing every card *is* the budget and there is no choice within them — **Hollis is the sole
-exception**, since his four cards allow nine copies against a budget of seven. And characters
-start **empty**: nothing is picked for the player.
+Two consequences worth knowing. For a character with three cards `4 + 2 + 2 = 8`, one over the
+budget, so **every character has to cut at least one copy** — and Hollis and Marlo, whose extra
+cards allow even more, have to cut more. And characters start **empty**: nothing is picked for
+the player.
 
 `availableCards()` is the seam for the planned card-discovery system. Today it returns
 everything the equipped characters own; later it intersects that with what has been found, and
@@ -222,6 +232,9 @@ consequences worth knowing:
 - **Poison ignores them entirely.** Damage over time eats health directly however much
   protection is stacked up, which makes Ivy the hard counter to Thane.
 
+**Defense Down** is its mirror (×0.7 per stack), and the two cancel stack for stack the way
+Strength and Weakness do.
+
 **Defense Up** compounds like Strength (×1.3 per stack, permanent). Note the mitigation curve
 already has diminishing returns, so a stack is worth much less than the raw multiplier
 suggests: DEF 50 → 65 is about 19% less damage taken, not 30%.
@@ -243,9 +256,10 @@ already down. One stack covers both, so the card is never dead weight. The one g
 cover is being the last ally standing — the battle is decided the moment you drop, leaving no
 enemy to feed on. There is a test pinning that as a known limitation.
 
-**Taunt** forces single-target *attacks* onto the taunter — debuffs still pick their own
-target, since a curse is not a blow. Area attacks bypass it entirely, which is the
-counterplay. One stack is one turn, and a stack falls off each end of turn, so the stack
+**Taunt** forces *attacks* onto the taunter — debuffs still pick their own target, since a
+curse is not a blow. Area attacks are pulled in too: the taunter takes one hit for every
+target the area would have struck, their own included, so a sweep over three allies is three
+blows on the wall. One stack is one turn, and a stack falls off each end of turn, so the stack
 count is the countdown (and is shown in the badge's turn corner rather than twice).
 
 **Counter Attack** fires the defender's basic back at whoever hit them, spends a stack, and
@@ -286,6 +300,8 @@ drain      = min(50%, 50% × (damage / maxHP ÷ 25%)²) of max stamina
 poison     = 5% × stacks of maxHP, ignoring Defense
 overdraw   = power + bonus × (missing stamina fraction)²
 fatigue    = stamina loss × 1.2 ^ stacks
+resting    = damage taken × 1.5, after Defense
+regen      = 40% of max stamina as your team's turn opens, unless resting
 ```
 
 Card power is a **percentage of the attacker's Attack** — power 60 lands at 60% of their
@@ -306,14 +322,36 @@ makes high-health characters stagger less from the same absolute damage.
 npm run balance
 ```
 
-Plays 200 seeded battles for **every party of three** and reports win rate, length and
-survivors per party. Run it after changing a stat or a card.
+Runs three probes: the arena for **every party of three** (win rate, length, survivors),
+every team against every party (`encounters`), and the full character × team swing grid
+(`swing`, also `npm run swing` on its own). Run it after changing a stat or a card.
 
-The AI plays the first affordable card at the first legal target, so its win rate is a
-**ceiling on how easy** the fight is — 99% means trivial, but the AI losing does not prove
-the fight is hard. It also systematically undervalues setup mechanics: a greedy
-player gets little from Fatigue, Taunt or Poison and everything from raw damage, so the
-damage-forward characters always test better than they play.
+`npm run kits` is separate and opt-in, because it adds several minutes: a per-character
+breakdown (damage share, times downed, which cards the planner plays) and head-to-head
+comparisons of deck builds and card costs for Ignis and Marlo.
+
+Battles are played by two AIs, on the same seeds:
+
+- **Planner** (`tests/combat/sim/planner.ts`) — the number to read. It beam-searches
+  orderings of its hand, plays out the enemy's reply several times for the most promising
+  turns, and scores what is left with a race model: party health against the damage it
+  expects to take before the last enemy falls. Setup cards (Strength, Poison, Bleed,
+  Fatigue, Taunt, shields) are valued before they pay out. It does not cheat — it
+  reshuffles its copy of the draw pile and uses its own rolls before imagining anything.
+- **Greedy** — the original first-card-first-target AI. Its win rate is a **ceiling on how
+  easy** a fight is. The swing probe's `gap` column (planner minus greedy) shows which
+  characters reward good play.
+
+Battles spread across a few cores via worker threads — deliberately not all of them, since a
+long run at full load can overheat a machine. Knobs, all optional:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `PROBE_SEEDS` | 10 | Seeds per party per team |
+| `PROBE_WORKERS` | cores ÷ 4, max 3 | `1` runs in-process, for stack traces |
+| `PROBE_BEAM` | 8 | Part-played turns kept per search depth |
+| `PROBE_LEAVES` | 6 | Top finished turns that get the enemy's reply simulated |
+| `PROBE_SAMPLES` | 4 | Enemy replies imagined per finished turn |
 
 > **Power numbers, stats and win rates are placeholder** while the roster is still being
 > built out. The probe exists so tuning is measurable when the time comes, not so the current

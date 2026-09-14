@@ -11,6 +11,7 @@ import {
   effectiveDefense,
   mitigation,
   poisonTickDamage,
+  STAMINA_REGEN_FRACTION,
 } from '@/game/combat/stats';
 import type {
   CardDefinition,
@@ -56,7 +57,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'thane',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneAlly',
     effects: [{ type: 'shield', fractionOfSourceMaxHealth: 0.25 }],
@@ -68,7 +68,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'thane',
-    energyCost: 2,
     staminaCost: 10,
     target: 'allAllies',
     effects: [{ type: 'shield', fractionOfSourceMaxHealth: 0.45, split: true }],
@@ -80,7 +79,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'thane',
-    energyCost: 0,
     staminaCost: 10,
     target: 'oneAlly',
     effects: [{ type: 'status', kind: 'defenseUp', stacks: 1, duration: PERMANENT }],
@@ -233,12 +231,16 @@ describe('absorbing damage', () => {
   });
 
   it('drains stamina only for the overflow', () => {
+    // One regeneration short of full, so the turn-start top-up lands exactly
+    // back on 100 minus whatever was drained instead of hiding it under the cap.
+    const stamina = 100 - Math.round(100 * STAMINA_REGEN_FRACTION);
+
     const shielded = battle({
-      combatants: [unit({ shield: 30 }), foe()],
+      combatants: [unit({ shield: 30, stamina }), foe()],
       enemyActions: { foe: BITE },
     });
     const bare = battle({
-      combatants: [unit(), foe()],
+      combatants: [unit({ stamina }), foe()],
       enemyActions: { foe: BITE },
     });
 

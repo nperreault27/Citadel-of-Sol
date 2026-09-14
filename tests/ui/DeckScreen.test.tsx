@@ -202,13 +202,16 @@ describe('DeckScreen', () => {
     expect(gameStore.getState().deck['ivy.inject']).toBe(4);
   });
 
-  it('stops a unique at one copy and marks it maxed', async () => {
+  it('stops a unique at two copies and marks it maxed', async () => {
     const user = userEvent.setup();
     const { container } = render(<DeckScreen onBack={() => {}} />);
 
     await user.click(plusIn(rowFor(container, 'Cascade')));
+    expect(isCapped(plusIn(rowFor(container, 'Cascade')))).toBe(false);
+    await user.click(plusIn(rowFor(container, 'Cascade')));
 
     const row = rowFor(container, 'Cascade');
+    expect(gameStore.getState().deck['ivy.cascade']).toBe(2);
     expect(isCapped(plusIn(row))).toBe(true);
     // A dead card has to say so on the card itself — there is no tooltip on a
     // phone.
@@ -225,9 +228,8 @@ describe('DeckScreen', () => {
   });
 
   it('distinguishes a budget block from a copy limit', async () => {
-    // Only Hollis can be budget-blocked while a card is still under its own cap.
-    // For a three-card character 4 + 2 + 1 is exactly the budget, so reaching 7
-    // means every card is simultaneously maxed. His four cards allow nine.
+    // Hollis's four cards allow ten copies against a budget of seven, so with
+    // the budget spent he still has a card nobody has touched.
     gameStore.getState().setParty(['hollis']);
     gameStore.getState().setDeck({});
 
@@ -277,7 +279,7 @@ describe('DeckScreen', () => {
     const user = userEvent.setup();
     const { container } = render(<DeckScreen onBack={() => {}} />);
 
-    // Ivy's three cards allow exactly 4 + 2 + 1 = 7.
+    // Ivy's three cards allow 4 + 2 + 2 = 8, so seven is reached one Cascade short.
     for (const [name, copies] of [
       ['Inject', 4],
       ['Disperse', 2],
@@ -288,8 +290,10 @@ describe('DeckScreen', () => {
     }
 
     expect(screen.getByText('7 / 7')).toBeInTheDocument();
-    // And every one of her cards is now capped.
+    // And every one of her cards is now capped — Cascade by the budget, not its own limit.
     expect(isCapped(plusIn(rowFor(container, 'Inject')))).toBe(true);
+    expect(isCapped(plusIn(rowFor(container, 'Cascade')))).toBe(true);
+    expect(within(rowFor(container, 'Cascade')).queryByText('MAX')).toBeNull();
   });
 
   it('only offers cards from the equipped party', () => {

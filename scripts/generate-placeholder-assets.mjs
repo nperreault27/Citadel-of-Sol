@@ -203,6 +203,8 @@ const FIGURES = [
   [[72, 96, 168], [124, 152, 216], [232, 214, 190], 18, 26], // Emrys, robed mage
   [[124, 40, 60], [186, 74, 96], [226, 210, 214], 20, 26], // Vesper, pale vampire
   [[86, 132, 148], [130, 180, 196], [224, 206, 186], 32, 28], // Thane, shield-bearer
+  [[196, 96, 40], [238, 150, 70], [236, 208, 176], 17, 25], // Ignis, wiry pyromancer
+  [[150, 136, 78], [212, 194, 122], [226, 196, 164], 24, 27], // Marlo, stout quartermaster
 
   // ── The bestiary ──
   [[104, 122, 78], [138, 156, 104], [128, 140, 92], 34, 34], // Ogre, hulking
@@ -226,7 +228,7 @@ const COMBATANT_H = 56;
 
 /**
  * One frame per kind of combatant, in the order COMBATANT_FRAMES expects — the
- * nine party members, then every enemy archetype in the bestiary.
+ * party members, then every enemy archetype in the bestiary.
  *
  * Silhouettes differ in bulk and height as well as colour, so a fight reads
  * apart at a glance on a phone screen rather than relying on hue alone. That

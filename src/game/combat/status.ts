@@ -7,12 +7,15 @@ import type { StatusDuration, StatusEntry, StatusKind } from './types';
 /**
  * Statuses that annul each other one stack at a time.
  *
- * Only Strength and Weakness pair up. Poison and Bleed have no opposite and are
- * absent here, so applying them skips cancellation entirely.
+ * Strength pairs with Weakness and Defense Up with Defense Down. Poison and
+ * Bleed have no opposite and are absent here, so applying them skips
+ * cancellation entirely.
  */
 const OPPOSITE: Partial<Record<StatusKind, StatusKind>> = {
   strength: 'weakness',
   weakness: 'strength',
+  defenseUp: 'defenseDown',
+  defenseDown: 'defenseUp',
 };
 
 function sameDuration(a: StatusDuration, b: StatusDuration): boolean {

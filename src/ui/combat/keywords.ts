@@ -76,7 +76,7 @@ export const KEYWORDS: Record<StatusKind, Keyword> = {
   taunt: {
     kind: 'taunt',
     label: 'Taunt',
-    text: 'Single-target attacks must hit this character. Spends 1 stack each turn.',
+    text: "Attacks on this character's team hit this character instead, area attacks included. Spends 1 stack each turn.",
   },
   counter: {
     kind: 'counter',
@@ -97,6 +97,11 @@ export const KEYWORDS: Record<StatusKind, Keyword> = {
     kind: 'defenseUp',
     label: 'Defense Up',
     text: `Increases this character's Defense by ${shift(STRENGTH_MULTIPLIER)} per stack.`,
+  },
+  defenseDown: {
+    kind: 'defenseDown',
+    label: 'Defense Down',
+    text: `Reduces this character's Defense by ${shift(WEAKNESS_MULTIPLIER)} per stack.`,
   },
 };
 

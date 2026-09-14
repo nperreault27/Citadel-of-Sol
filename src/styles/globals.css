@@ -39,6 +39,8 @@
   --char-emrys: #7c98d8;
   --char-vesper: #ba4a60;
   --char-thane: #82b4c4;
+  --char-ignis: #ee8a3c;
+  --char-marlo: #d4c27a;
 
   /* Neutral: team cards, and anything with no character behind it. */
   --card-accent: var(--ink-dim);
@@ -81,6 +83,12 @@
 }
 [data-owner='thane'] {
   --card-accent: var(--char-thane);
+}
+[data-owner='ignis'] {
+  --card-accent: var(--char-ignis);
+}
+[data-owner='marlo'] {
+  --card-accent: var(--char-marlo);
 }
 
 /*
@@ -787,6 +795,10 @@ canvas {
   color: #86c4d4;
 }
 
+.status--defenseDown {
+  color: #c98a6a;
+}
+
 /* ── Floating damage numbers ─────────────────────────────────────────────── */
 
 .floaters {
@@ -897,7 +909,7 @@ canvas {
   }
 }
 
-/* ── Bottom bar: energy, hand, end turn ──────────────────────────────────── */
+/* ── Bottom bar: status, hand, end turn ──────────────────────────────────── */
 
 .combat__bottom {
   display: flex;
@@ -918,23 +930,6 @@ canvas {
   gap: 10px;
   font-size: 11px;
   color: var(--ink-dim);
-}
-
-.energy {
-  display: flex;
-  gap: 4px;
-}
-
-.energy__pip {
-  width: 11px;
-  height: 11px;
-  border: 2px solid rgba(216, 166, 87, 0.5);
-  border-radius: 50%;
-}
-
-.energy__pip--full {
-  background: var(--accent);
-  border-color: var(--accent);
 }
 
 .combat__round {
@@ -1070,12 +1065,6 @@ canvas {
   display: none;
 }
 
-.card--compact .card__energy {
-  width: 16px;
-  height: 16px;
-  font-size: 10px;
-}
-
 /*
  * With no rules text to push it down, the name takes the slack — but only two
  * lines of it. Longer names end in an ellipsis; the whole one is a hold away,
@@ -1115,19 +1104,22 @@ canvas {
   transform: translateY(-6px);
 }
 
-.card__energy {
+/*
+ * A neutral card's price: it costs no stamina, it is used up. Gold, the team's
+ * colour, so it reads as a different kind of cost from the blue stamina badge
+ * rather than a missing one.
+ */
+.card__once {
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
-  display: grid;
-  place-items: center;
+  padding: 1px 5px;
 
-  border-radius: 50%;
-  background: var(--accent);
-  color: #1a1408;
+  border: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  border-radius: 8px;
+  color: var(--accent);
 
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 9px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .card__name {
@@ -1162,8 +1154,8 @@ canvas {
 
 /*
  * At hand width the cost is a number in a badge, because there is no room to
- * name it — a blue one beside the gold energy pip, the same blue as the stamina
- * bar under every fighter. Everywhere else the word is spelled out.
+ * name it — the same blue as the stamina bar under every fighter. Everywhere
+ * else the word is spelled out.
  */
 .card--compact .card__stamina {
   min-width: 16px;
@@ -1189,18 +1181,12 @@ canvas {
 
 /*
  * Below this width the normal face stops fitting, so it gives up ornament
- * before it gives up meaning: the cost pip, the name and the rules text all
+ * before it gives up meaning: the cost, the name and the rules text all
  * survive, the decorative "no stamina" label does not. Keyed to the card's own
  * width rather than the viewport, so a card is only ever condensed when it is
  * actually narrow — deck-builder cards, fixed at 92px, never are.
  */
 @container card (max-width: 84px) {
-  .card__energy {
-    width: 16px;
-    height: 16px;
-    font-size: 10px;
-  }
-
   .card__name {
     font-size: 11px;
     line-height: 1.2;
@@ -1266,12 +1252,6 @@ canvas {
   border-color: var(--accent);
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.65);
   pointer-events: none;
-}
-
-.card--detail .card__energy {
-  width: 26px;
-  height: 26px;
-  font-size: 15px;
 }
 
 .card--detail .card__name {
@@ -1623,8 +1603,7 @@ canvas {
 /*
  * How often the move comes up, in the corner that prices a player's card. It is
  * the same question — what does this cost me — asked from the other side, so it
- * sits in the same place and wears the card's own accent rather than the gold
- * of an energy pip the enemy never spends.
+ * sits in the same place and wears the card's own accent.
  */
 .card__share {
   flex: 0 0 auto;
@@ -1633,8 +1612,8 @@ canvas {
 
   border: 1px solid color-mix(in srgb, var(--card-accent) 60%, transparent);
   border-radius: 8px;
-  /* Tinted rather than filled: dark text on this red is exactly the contrast
-     the gold energy pip has to spare and this one does not. */
+  /* Tinted rather than filled: dark text on this red does not have the
+     contrast to read. */
   background: color-mix(in srgb, var(--card-accent) 26%, transparent);
   color: #f0b5b1;
 

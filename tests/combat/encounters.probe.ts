@@ -1,26 +1,7 @@
 import { describe, it } from 'vitest';
-import {
-  canPlayCard,
-  cardDefOf,
-  createCombat,
-  endPlayerTurn,
-  legalTargets,
-  resolveEnemyTurn,
-  resolveSelection,
-  selectCard,
-  chooseTarget,
-  confirmDiscard,
-} from '@/game/combat/engine';
-import { expandDeck } from '@/game/combat/deckbuilding';
-import {
-  COMBAT_CONTENT,
-  ENEMY_TEAMS,
-  PARTY_SIZE,
-  ROSTER,
-  characterById,
-  defaultDeck,
-} from '@/game/combat/content';
-import type { Combatant, CombatState } from '@/game/combat/types';
+import { ENEMY_TEAMS, ROSTER } from '@/game/combat/content';
+import { mean, runGrid, seedsFromEnv } from './sim/grid';
+import { everyParty } from './sim/play';
 
 /**
  * Does each enemy team actually ask a different question?
@@ -35,119 +16,85 @@ import type { Combatant, CombatState } from '@/game/combat/types';
  * means some parties genuinely answer it and others genuinely don't, which is
  * the entire reason the roster has nine characters and the deck builder exists.
  *
- * Same greedy AI as the other probe, so the same caveat: it plays the first
- * affordable card at the first legal target, and its win rate is a *ceiling on
- * how easy* a fight is rather than a measure of how hard.
+ * Everything is measured with the planner AI. The `greedy%` column is the old
+ * first-card-first-target AI on the same battles, kept as a baseline: it is a
+ * ceiling on how easy a fight is, and a team where it sits far below the
+ * planner is one that rewards thinking.
  *
- * Asserts nothing. Run with `npm run balance`.
+ * Asserts nothing. Run with `npm run balance`; `PROBE_SEEDS` overrides seeds.
  */
 
-const SEEDS = 30;
+const SEEDS = seedsFromEnv(10);
 
-function playOut(state: CombatState): CombatState {
-  let current = state;
+/** Win rate at which a party counts as beating a fight consistently. */
+const CONSISTENT = 80;
 
-  for (let i = 0; i < 300; i++) {
-    if (current.phase === 'victory' || current.phase === 'defeat') break;
+/** The characters whose whole plan is to stall, so their fights run long on purpose. */
+const TANKS = ['hollis', 'thane'];
 
-    if (current.phase === 'selecting') {
-      const choice = current.selection?.cards[0];
-      if (!choice) break;
-      current = resolveSelection(current, choice);
-      continue;
-    }
-
-    if (current.phase === 'discarding') {
-      const toss = current.hand.slice(0, Math.max(1, current.hand.length - current.handLimit));
-      current = confirmDiscard(current, COMBAT_CONTENT, toss);
-      continue;
-    }
-
-    if (current.phase === 'enemyTurn') {
-      current = resolveEnemyTurn(current, COMBAT_CONTENT);
-      continue;
-    }
-
-    if (current.phase === 'selectTarget') {
-      const targets = current.pendingCard
-        ? legalTargets(current, COMBAT_CONTENT, current.pendingCard)
-        : [];
-      const first = targets[0];
-      current = first
-        ? chooseTarget(current, COMBAT_CONTENT, first)
-        : endPlayerTurn(current, COMBAT_CONTENT);
-      continue;
-    }
-
-    // selectCard: the first card that can be paid for, else pass.
-    const playable = current.hand.find(
-      (id) => cardDefOf(current, COMBAT_CONTENT, id) && canPlayCard(current, COMBAT_CONTENT, id).ok
-    );
-
-    current = playable
-      ? selectCard(current, COMBAT_CONTENT, playable)
-      : endPlayerTurn(current, COMBAT_CONTENT);
-  }
-
-  return current;
-}
-
-function everyParty(): string[][] {
-  const parties: string[][] = [];
-  const ids = ROSTER.map((c) => c.id);
-
-  for (let a = 0; a < ids.length; a++) {
-    for (let b = a + 1; b < ids.length; b++) {
-      for (let c = b + 1; c < ids.length; c++) {
-        parties.push([ids[a]!, ids[b]!, ids[c]!]);
-      }
-    }
-  }
-
-  return parties.filter((p) => p.length === PARTY_SIZE);
-}
-
-/** A battle between one party and one team, bypassing the hardcoded arena. */
-function fight(party: string[], enemies: Combatant[], seed: number): CombatState {
-  const roster = party
-    .map(characterById)
-    .filter((character): character is Combatant => character !== undefined);
-
-  return createCombat({
-    combatants: [...roster, ...enemies],
-    deck: expandDeck(defaultDeck(party)),
-    seed,
-  });
+/** Nearest-rank percentile of an ascending array, p in [0, 1]. */
+function percentile(sorted: readonly number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  return sorted[Math.min(sorted.length - 1, Math.round(p * (sorted.length - 1)))] ?? 0;
 }
 
 describe('encounter probe', () => {
-  it('reports how much the party matters, team by team', () => {
+  it('reports how much the party matters, team by team', async () => {
     const parties = everyParty();
+    const teamIds = ENEMY_TEAMS.map((team) => team.id);
+    const cell = await runGrid(parties, teamIds, SEEDS, ['planner', 'greedy'], 'encounters');
 
-    console.log(`\n  ${parties.length} parties x ${SEEDS} seeds per team\n`);
+    // `spread` is the 90th-percentile party minus the 10th, so a single party
+    // that cannot deal damage at all no longer sets it to 100 on every team.
+    // `rounds` is the median battle length, all parties then tank-free ones.
+    // `alive` is mean survivors on the battles the planner won.
     console.log(
-      '  team                  tier    win%    spread   best party                 worst party'
+      '\n  team                  tier    win%  greedy%  spread  >=80%  rounds  no-tank  alive' +
+        '   best party                 worst party'
     );
 
     for (const team of ENEMY_TEAMS) {
-      const scored = parties.map((party) => {
-        let wins = 0;
-        for (let seed = 1; seed <= SEEDS; seed++) {
-          if (playOut(fight(party, team.members, seed)).phase === 'victory') wins++;
-        }
-        return { party: party.join('+'), rate: (wins / SEEDS) * 100 };
+      const scored = parties.map((party, index) => {
+        const planner = cell('planner', team.id, index);
+        return {
+          party: party.join('+'),
+          tank: party.some((id) => TANKS.includes(id)),
+          rate: planner.rate,
+          greedy: cell('greedy', team.id, index).rate,
+          outcomes: planner.outcomes,
+        };
       });
 
-      scored.sort((a, b) => b.rate - a.rate);
+      const overall = mean(scored.map((row) => row.rate));
+      const greedy = mean(scored.map((row) => row.greedy));
 
-      const best = scored[0]!;
-      const worst = scored[scored.length - 1]!;
-      const overall = scored.reduce((sum, row) => sum + row.rate, 0) / scored.length;
+      const ranked = [...scored].sort((a, b) => b.rate - a.rate);
+      const best = ranked[0];
+      const worst = ranked[ranked.length - 1];
+      if (!best || !worst) continue;
+
+      const rates = scored.map((row) => row.rate).sort((a, b) => a - b);
+      const spread = percentile(rates, 0.9) - percentile(rates, 0.1);
+      const consistent = scored.filter((row) => row.rate >= CONSISTENT).length;
+
+      const roundsOf = (rows: typeof scored) =>
+        rows.flatMap((row) => row.outcomes.map((o) => o.rounds)).sort((a, b) => a - b);
+      const rounds = percentile(roundsOf(scored), 0.5);
+      const tankFree = percentile(roundsOf(scored.filter((row) => !row.tank)), 0.5);
+
+      const alive = mean(
+        scored.flatMap((row) => row.outcomes.filter((o) => o.win).map((o) => o.survivors))
+      );
 
       console.log(
         `  ${team.name.padEnd(22)}${String(team.tier).padEnd(6)}` +
           `${overall.toFixed(1).padStart(6)}%` +
-          `${(best.rate - worst.rate).toFixed(1).padStart(9)}   ` +
+          `${greedy.toFixed(1).padStart(8)}%` +
+          `${spread.toFixed(0).padStart(8)}` +
+          `${String(consistent).padStart(7)}` +
+          `${String(rounds).padStart(8)}` +
+          `${String(tankFree).padStart(9)}` +
+          `${alive.toFixed(2).padStart(7)}   ` +
           `${`${best.party} (${best.rate.toFixed(0)}%)`.padEnd(27)}` +
           `${worst.party} (${worst.rate.toFixed(0)}%)`
       );
@@ -159,8 +106,7 @@ describe('encounter probe', () => {
       // fails to: if nobody swings, the fight has no opinion about the roster.
       const swing = ROSTER.map((character) => {
         const rows = scored.filter((row) => row.party.split('+').includes(character.id));
-        const mean = rows.reduce((sum, row) => sum + row.rate, 0) / rows.length;
-        return { id: character.id, delta: mean - overall };
+        return { id: character.id, delta: mean(rows.map((row) => row.rate)) - overall };
       }).sort((a, b) => b.delta - a.delta);
 
       const show = (entry: { id: string; delta: number }) =>

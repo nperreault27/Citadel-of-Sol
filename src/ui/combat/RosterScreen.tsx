@@ -16,6 +16,8 @@ const TRAITS: Record<string, { label: string; kind: StatusKind | null }> = {
   emrys: { label: 'Chain damage', kind: null },
   vesper: { label: 'Lifesteal', kind: 'undying' },
   thane: { label: 'Shields', kind: 'defenseUp' },
+  ignis: { label: 'Area damage', kind: null },
+  marlo: { label: 'Buffs and debuffs', kind: 'defenseDown' },
 };
 
 /**

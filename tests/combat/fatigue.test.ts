@@ -13,6 +13,7 @@ import {
   DEFENSE_K,
   fatigueMultiplier,
   RESTING_DAMAGE_MULTIPLIER,
+  STAMINA_REGEN_FRACTION,
 } from '@/game/combat/stats';
 import { defaultDeck, DEFAULT_PARTY, ROSTER, characterById } from '@/game/combat/content';
 import { expandDeck } from '@/game/combat/deckbuilding';
@@ -60,7 +61,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 10 }],
@@ -72,7 +72,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'status', kind: 'fatigue', stacks: 1, duration: UNTIL_REST }],
@@ -84,7 +83,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 2,
     staminaCost: 10,
     target: 'allEnemies',
     effects: [
@@ -98,7 +96,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'drainStamina', amount: 40 }],
@@ -110,7 +107,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: null,
-    energyCost: 0,
     staminaCost: 0,
     target: 'none',
     effects: [{ type: 'revealAndKeep', look: 3 }],
@@ -122,7 +118,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: null,
-    energyCost: 1,
     staminaCost: 0,
     target: 'none',
     effects: [{ type: 'discardThenDraw', draw: 2 }],
@@ -134,7 +129,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: null,
-    energyCost: 1,
     staminaCost: 0,
     target: 'oneAlly',
     effects: [{ type: 'healPercent', fraction: 0.15 }],
@@ -253,8 +247,11 @@ describe('fatigue in play', () => {
     const a = passTurn(plain.state, withBite(plain.content));
     const b = passTurn(tired.state, withBite(tired.content));
 
-    const drainedA = 100 - (a.combatants['hero']?.stamina ?? 0);
-    const drainedB = 100 - (b.combatants['hero']?.stamina ?? 0);
+    // The player turn has opened by the time this is read, so its regeneration
+    // is already in the bar and has to come back out.
+    const regen = Math.round(100 * STAMINA_REGEN_FRACTION);
+    const drainedA = 100 - ((a.combatants['hero']?.stamina ?? 0) - regen);
+    const drainedB = 100 - ((b.combatants['hero']?.stamina ?? 0) - regen);
 
     expect(drainedB).toBeGreaterThan(drainedA);
     expect(drainedB).toBe(Math.round(drainedA * 1.44));
@@ -388,6 +385,7 @@ describe('revealAndKeep', () => {
       revealed.hand.length +
       revealed.drawPile.length +
       revealed.discardPile.length +
+      revealed.exhaustPile.length +
       (revealed.selection?.cards.length ?? 0);
 
     expect(accounted).toBe(Object.keys(revealed.cards).length);

@@ -3,7 +3,7 @@ import type { CardDefinition } from '@/game/combat/types';
 /**
  * How much of the card to draw.
  *
- * - `compact` — hand-sized: the name and the two costs as badges, nothing else.
+ * - `compact` — hand-sized: the name and the cost as a badge, nothing else.
  *   The rules text is what makes a card wide, and a hand of them will not fit
  *   across a phone.
  * - `brief` — the deck builder: a line saying what the card is for.
@@ -32,14 +32,13 @@ interface Props {
 /**
  * The visual face of a card: name, what it does, and what it costs.
  *
- * Both costs sit in the bottom-right corner, because they are read together:
- * what a card asks for is energy *and* stamina, and a player deciding what to
- * play is comparing the pair against what they have. Always the same corner, so
- * a row of cards can be priced by scanning one edge.
+ * The cost sits in the bottom-right corner, always the same corner, so a row of
+ * cards can be priced by scanning one edge. A character's card costs that
+ * character's stamina; a neutral card costs nothing but is used up, and says so
+ * in the same place — that is its price.
  *
- * A compact card prices itself in badges — a gold pip for energy, a blue one
- * for stamina — because at hand width there is no room to name either. Anywhere
- * the card is bigger the stamina cost is spelled out.
+ * A compact card prices itself in a blue badge, because at hand width there is
+ * no room to name the resource. Anywhere the card is bigger it is spelled out.
  *
  * Whose card it is isn't written anywhere: the card wears its owner's colour
  * instead, set by `data-owner` on the wrapper.
@@ -59,18 +58,15 @@ export function CardFace({ card, detail = 'full' }: Props) {
       {detail === 'full' && <span className="card__text">{card.description}</span>}
 
       <span className="card__foot">
-        {card.staminaCost > 0 ? (
+        {card.ownerId === null ? (
+          <span className="card__once">one use</span>
+        ) : card.staminaCost > 0 ? (
           <span className="card__stamina" aria-label={`${card.staminaCost} stamina`}>
             {compact ? card.staminaCost : `${card.staminaCost} stamina`}
           </span>
         ) : (
           !compact && <span className="card__stamina card__stamina--none">no stamina</span>
         )}
-
-        {/* Last, so the pip lands in the corner itself. */}
-        <span className="card__energy" aria-label={`${card.energyCost} energy`}>
-          {card.energyCost}
-        </span>
       </span>
     </>
   );

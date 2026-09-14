@@ -171,11 +171,12 @@ describe('reading an enemy', () => {
     const { container } = render(<CombatScreen />);
     await user.click(enemyPanel(container));
 
-    // 110 Attack at 0.7 is 77. A Weakened Ogre still advertising 110 would be
-    // answering a question nobody asked.
+    // Weakness takes Attack to 0.7 of printed. A Weakened Ogre still advertising
+    // its printed Attack would be answering a question nobody asked. Read off the
+    // Ogre rather than written in, so retuning it doesn't break this.
     const panel = sheet(container) as HTMLElement;
-    expect(within(panel).getByText('77')).toBeInTheDocument();
-    expect(within(panel).queryByText('110')).toBeNull();
+    expect(within(panel).getByText(String(Math.round(ogre.attack * 0.7)))).toBeInTheDocument();
+    expect(within(panel).queryByText(String(ogre.attack))).toBeNull();
   });
 
   it('closes on a tap outside it', async () => {

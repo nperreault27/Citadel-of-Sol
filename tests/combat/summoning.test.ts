@@ -86,7 +86,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: 'Do nothing.',
     brief: 'Nothing',
     ownerId: null,
-    energyCost: 0,
     staminaCost: 0,
     target: 'none',
     effects: [],

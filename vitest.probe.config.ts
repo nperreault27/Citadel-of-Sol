@@ -29,6 +29,13 @@ export default defineConfig({
      * one. Nothing here asserts, so a generous ceiling costs nothing — it only
      * has to be long enough that a slow machine finishes the report.
      */
-    testTimeout: 300_000,
+    testTimeout: 3_600_000,
+
+    /*
+     * Each probe already spreads its battles over every core with its own
+     * worker threads. Running the probe files side by side as well would just
+     * have them fight over the same cores.
+     */
+    fileParallelism: false,
   },
 });

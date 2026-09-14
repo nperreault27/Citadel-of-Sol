@@ -40,7 +40,7 @@ export function SelectionStrip() {
                 key={instanceId}
                 card={def}
                 // Every choice is legal here — this is a pick, not a play, so
-                // energy and stamina are irrelevant.
+                // stamina is irrelevant.
                 playable
                 selected={false}
                 // Nothing here is marked yet. Red means "this card is going",

@@ -54,6 +54,13 @@ export function EnemySheet({ combatant, onDismiss }: Props) {
 
         <StatLine combatant={combatant} />
 
+        {combatant.damageTakenWithAllies !== undefined && (
+          <p className="sheet__label">
+            Takes {Math.round(combatant.damageTakenWithAllies * 100)}% damage from attacks while
+            an ally stands
+          </p>
+        )}
+
         <div className="sheet__scroll">
           <p className="sheet__label">
             {actions.length === 1 ? 'Its one move' : `Its ${actions.length} moves`}

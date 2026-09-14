@@ -13,16 +13,16 @@ export type DeckList = Record<CardDefId, number>;
 export type CardDefs = Record<CardDefId, CardDefinition>;
 
 /**
- * Copies of one card a deck may hold.
+ * Copies of one card a deck may hold. Everything above a basic caps at two.
  *
- * For a character with three cards these sum to exactly CARDS_PER_CHARACTER, so
- * maxing everything is precisely spending the budget. Hollis, with four cards,
- * can reach nine and therefore has to cut — he is the only one who does.
+ * For a character with three cards these sum to eight, one more than
+ * CARDS_PER_CHARACTER, so every character has to leave at least one copy out.
+ * Hollis and Marlo, with more cards than that, have to leave out more.
  */
 export const COPY_LIMITS: Record<CardTier, number> = {
   basic: 4,
   special: 2,
-  unique: 1,
+  unique: 2,
 };
 
 /** Cards any one character may contribute. */
@@ -232,6 +232,16 @@ export function expandDeck(deck: DeckList): CardDefId[] {
 }
 
 /**
+ * Order `defaultDeckFor` spends a character's budget in: the rarest tier first.
+ *
+ * A deck meant to test a character should be built around their signature
+ * cards, so uniques and specials are maxed and basics take whatever budget is
+ * left. A three-card character comes out at two uniques, two specials and three
+ * basics; Hollis and Marlo, with more cards, run out before their last basic.
+ */
+const DEFAULT_FILL_ORDER: CardTier[] = ['unique', 'special', 'basic'];
+
+/**
  * Fills every equipped character to their cap, plus all the neutrals.
  *
  * Deliberately not used by the builder, where characters start empty and the
@@ -240,11 +250,10 @@ export function expandDeck(deck: DeckList): CardDefId[] {
  */
 export function defaultDeckFor(cardDefs: CardDefs, party: readonly CombatantId[]): DeckList {
   const deck: DeckList = {};
+  const available = availableCards(cardDefs, party);
+  const ordered = DEFAULT_FILL_ORDER.flatMap((tier) => available.filter((card) => card.tier === tier));
 
-  for (const card of availableCards(cardDefs, party)) {
-    const check = canAddCopy(cardDefs, deck, party, card.id);
-    if (!check.ok) continue;
-
+  for (const card of ordered) {
     let count = 0;
     while (canAddCopy(cardDefs, deck, party, card.id).ok) {
       count += 1;

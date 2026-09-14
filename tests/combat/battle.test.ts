@@ -136,9 +136,11 @@ describe('a full battle', () => {
     const total = start.drawPile.length + start.hand.length + start.discardPile.length;
 
     const end = playOut(start, 40);
-    const endTotal = end.drawPile.length + end.hand.length + end.discardPile.length;
+    const endTotal =
+      end.drawPile.length + end.hand.length + end.discardPile.length + end.exhaustPile.length;
 
-    // Cards must never be created or destroyed, only moved.
+    // Cards must never be created or destroyed, only moved — a used-up neutral
+    // card is in the exhaust pile, not gone.
     expect(endTotal).toBe(total);
     expect(total).toBe(Object.keys(start.cards).length);
   });
@@ -185,6 +187,16 @@ describe('a full battle', () => {
     for (const team of ENEMY_TEAMS) {
       const ids = team.members.map((member) => member.id);
       expect(new Set(ids).size, `${team.id} has duplicate ids`).toBe(ids.length);
+    }
+  });
+
+  it('opens every encounter with every enemy at full health', () => {
+    // A stat block that set health and maxHealth apart would start a fight
+    // half-won.
+    for (const team of ENEMY_TEAMS) {
+      for (const enemy of team.members) {
+        expect(enemy.health, `${team.id}: ${enemy.id}`).toBe(enemy.maxHealth);
+      }
     }
   });
 

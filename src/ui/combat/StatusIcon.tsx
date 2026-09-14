@@ -90,6 +90,15 @@ export function StatusIcon({ kind }: { kind: StatusKind }) {
         </svg>
       );
 
+    case 'defenseDown':
+      // The same shield with the chevron turned down: protection, broken open.
+      return (
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2 4 5.2v6.3c0 4.6 3.3 8.8 8 10.5 4.7-1.7 8-5.9 8-10.5V5.2L12 2Zm0 2.2 6 2.4v4.9c0 3.5-2.4 6.8-6 8.3-3.6-1.5-6-4.8-6-8.3V6.6l6-2.4Z" />
+          <path d="m12 16.4-4-4.4h2.4V8.4h3.2V12H16l-4 4.4Z" />
+        </svg>
+      );
+
     case 'weakness':
       // The same arrow, inverted.
       return (

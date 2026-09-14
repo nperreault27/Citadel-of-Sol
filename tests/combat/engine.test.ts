@@ -60,7 +60,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 50 }],
@@ -72,7 +71,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 100,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 50 }],
@@ -84,7 +82,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'self',
     effects: [{ type: 'status', kind: 'strength', stacks: 1, duration: PERMANENT }],
@@ -96,7 +93,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'self',
     effects: [{ type: 'status', kind: 'strength', stacks: 1, duration: ONE_TURN }],
@@ -108,7 +104,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'status', kind: 'weakness', stacks: 1, duration: ONE_TURN }],
@@ -123,7 +118,6 @@ const CARDS: Record<string, CardDefinition> = {
     // revive, so a card owned by the ally would be unplayable in exactly the
     // test that needs it.
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneAlly',
     effects: [{ type: 'heal', amount: 40 }],
@@ -135,7 +129,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: null,
-    energyCost: 1,
     staminaCost: 0,
     target: 'none',
     effects: [{ type: 'draw', count: 2 }],
@@ -188,12 +181,11 @@ function passTurn(state: CombatState, content: CombatContent): CombatState {
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('createCombat', () => {
-  it('deals a full hand and full energy', () => {
+  it('deals a full hand', () => {
     const { state } = battle();
 
     expect(state.hand).toHaveLength(5);
-    expect(state.energy).toBe(5);
-    expect(state.maxEnergy).toBe(5);
+    expect(state.exhaustPile).toEqual([]);
     expect(state.round).toBe(1);
   });
 
@@ -221,13 +213,12 @@ describe('createCombat', () => {
 });
 
 describe('playing a card', () => {
-  it('spends energy and the owner stamina, and discards the card', () => {
+  it('spends the owner stamina and discards the card', () => {
     const { state, content: c } = battle();
     const card = findInHand(state, 'strike');
 
     const next = chooseTarget(selectCard(state, c, card), c, 'foe');
 
-    expect(next.energy).toBe(4);
     expect(next.combatants['hero']?.stamina).toBe(80);
     expect(next.hand).not.toContain(card);
     expect(next.discardPile).toContain(card);
@@ -254,7 +245,7 @@ describe('playing a card', () => {
     const mid = selectCard(state, c, findInHand(state, 'strike'));
 
     expect(mid.phase).toBe('selectTarget');
-    expect(mid.energy).toBe(5); // nothing paid until a target is chosen
+    expect(mid.combatants['hero']?.stamina).toBe(100); // nothing paid until a target is chosen
   });
 
   it('resolves immediately for cards that need no choice', () => {
@@ -270,31 +261,49 @@ describe('playing a card', () => {
     const cancelled = cancelCardSelection(selectCard(state, c, findInHand(state, 'strike')));
 
     expect(cancelled.phase).toBe('selectCard');
-    expect(cancelled.energy).toBe(5);
+    expect(cancelled.combatants['hero']?.stamina).toBe(100);
     expect(cancelled.hand).toHaveLength(5);
-  });
-
-  it('refuses a card with no energy left', () => {
-    let { state } = battle();
-    const c = content();
-    state = { ...state, energy: 0 };
-
-    const check = canPlayCard(state, c, findInHand(state, 'strike'));
-    expect(check.ok).toBe(false);
-    expect(check.reason).toMatch(/energy/i);
   });
 
   it('does not mutate the state it was given', () => {
     const { state, content: c } = battle();
-    const before = state.energy;
     chooseTarget(selectCard(state, c, findInHand(state, 'strike')), c, 'foe');
 
-    expect(state.energy).toBe(before);
+    expect(state.combatants['hero']?.stamina).toBe(100);
     expect(state.hand).toHaveLength(5);
   });
 });
 
 describe('stamina and resting', () => {
+  it('regains 40% of max stamina as the team turn opens', () => {
+    const { state, content: c } = battle({
+      combatants: [hero(), foe({ health: 1000, maxHealth: 1000 })],
+    });
+
+    let spent = state;
+    for (let i = 0; i < 3; i++) {
+      spent = chooseTarget(selectCard(spent, c, findInHand(spent, 'strike')), c, 'foe');
+    }
+    expect(spent.combatants['hero']?.stamina).toBe(40);
+
+    expect(passTurn(spent, c).combatants['hero']?.stamina).toBe(80);
+  });
+
+  it('never regenerates past the max', () => {
+    const { state, content: c } = battle({
+      combatants: [hero(), foe({ health: 1000, maxHealth: 1000 })],
+    });
+    const spent = chooseTarget(selectCard(state, c, findInHand(state, 'strike')), c, 'foe');
+
+    expect(passTurn(spent, c).combatants['hero']?.stamina).toBe(100);
+  });
+
+  it('regenerates enemies as their own turn opens', () => {
+    const { state, content: c } = battle({ combatants: [hero(), foe({ stamina: 30 })] });
+
+    expect(endPlayerTurn(state, c).combatants['foe']?.stamina).toBe(70);
+  });
+
   it('forces a rest when stamina bottoms out, and allows overspending', () => {
     const { state, content: c } = battle({ deck: Array.from({ length: 12 }, () => 'heavy') });
     const next = chooseTarget(selectCard(state, c, findInHand(state, 'heavy')), c, 'foe');
@@ -349,7 +358,9 @@ describe('stamina and resting', () => {
     // The mirror of the rule above: the foe spends its last stamina biting, so
     // it is asleep — and taking extra damage — for all of the player's turn.
     const { state, content: c } = battle({
-      combatants: [hero({ health: 300, maxHealth: 300 }), foe({ stamina: 10 })],
+      // A small bar, so the turn-start regeneration still leaves too little for
+      // the bite and it empties itself.
+      combatants: [hero({ health: 300, maxHealth: 300 }), foe({ stamina: 5, maxStamina: 10 })],
       enemyActions: { foe: BITE },
       deck: Array.from({ length: 12 }, () => 'strike'),
     });
@@ -357,9 +368,13 @@ describe('stamina and resting', () => {
     const bitten = passTurn(state, c);
     expect(bitten.combatants['foe']?.resting).toBe(true);
 
-    // It wakes as that turn ends, in time to act on the turn after.
-    const after = passTurn(bitten, c);
-    expect(after.combatants['foe']?.resting).toBe(false);
+    // It wakes as that turn ends, in time to act on the turn after. Checked
+    // before the enemy acts: this bar is small enough that it bites itself
+    // straight back to sleep.
+    const woken = endPlayerTurn(bitten, c);
+    expect(woken.combatants['foe']?.resting).toBe(false);
+
+    const after = resolveEnemyTurn(woken, c);
     expect(after.combatants['hero']?.health).toBeLessThan(bitten.combatants['hero']!.health);
   });
 });
@@ -397,14 +412,46 @@ describe('turn-long statuses', () => {
 });
 
 describe('neutral cards', () => {
-  it('cost energy but no stamina', () => {
+  it('cost no stamina', () => {
     const { state, content: c } = battle({
       deck: ['regroup', 'strike', 'strike', 'strike', 'strike', 'strike', 'strike'],
     });
     const next = selectCard(state, c, findInHand(state, 'regroup'));
 
-    expect(next.energy).toBe(4);
     expect(next.combatants['hero']?.stamina).toBe(100);
+  });
+
+  it('are used up rather than discarded', () => {
+    const { state, content: c } = battle({
+      deck: ['regroup', 'strike', 'strike', 'strike', 'strike', 'strike', 'strike'],
+    });
+    const card = findInHand(state, 'regroup');
+    const next = selectCard(state, c, card);
+
+    expect(next.hand).not.toContain(card);
+    expect(next.discardPile).not.toContain(card);
+    expect(next.exhaustPile).toEqual([card]);
+  });
+
+  it('never come back round, even through a reshuffle', () => {
+    // Six cards: the whole deck cycles every turn or two, so a used-up card that
+    // leaked back into the discard would be in hand again almost at once.
+    const { state, content: c } = battle({
+      combatants: [hero(), foe({ health: 10000, maxHealth: 10000 })],
+      deck: ['regroup', 'strike', 'strike', 'strike', 'strike', 'strike'],
+    });
+    const card = findInHand(state, 'regroup');
+    let current = selectCard(state, c, card);
+
+    for (let turn = 0; turn < 6; turn++) {
+      const strike = current.hand.find((id) => canPlayCard(current, c, id).ok);
+      if (strike) current = chooseTarget(selectCard(current, c, strike), c, 'foe');
+      current = passTurn(current, c);
+
+      expect(current.hand).not.toContain(card);
+      expect(current.drawPile).not.toContain(card);
+      expect(current.exhaustPile).toEqual([card]);
+    }
   });
 
   it('draw effects add to the hand', () => {
@@ -546,12 +593,11 @@ describe('end of turn', () => {
     expect(done.hand).toHaveLength(discarding.handLimit);
   });
 
-  it('resets energy and advances the round after the enemy acts', () => {
+  it('advances the round after the enemy acts', () => {
     const { state, content: c } = battle();
     const played = chooseTarget(selectCard(state, c, findInHand(state, 'strike')), c, 'foe');
     const next = passTurn(played, c);
 
-    expect(next.energy).toBe(5);
     expect(next.round).toBe(2);
     expect(next.activeTeam).toBe('player');
     expect(next.phase).toBe('selectCard');

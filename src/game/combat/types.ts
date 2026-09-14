@@ -28,7 +28,8 @@ export type StatusKind =
   | 'counter'
   | 'immunity'
   | 'undying'
-  | 'defenseUp';
+  | 'defenseUp'
+  | 'defenseDown';
 
 /**
  * How a status leaves play.
@@ -110,6 +111,18 @@ export interface Combatant {
   defense: number;
   speed: number;
 
+  /**
+   * Fraction of attack damage that gets through while anyone else on this
+   * combatant's side is still standing. Absent means no such guard.
+   *
+   * The Broodmother's: her brood shields her, so clearing it is how you get to
+   * her. Attacks only — Poison skips it for the same reason it skips Defense.
+   */
+  damageTakenWithAllies?: number;
+
+  /** Poison never lands on this combatant, and so never ticks. */
+  poisonImmune?: boolean;
+
   statuses: StatusEntry[];
 
   /** Health hit 0. Out of the fight until revived; cards keep circulating. */
@@ -173,7 +186,19 @@ export type CardEffect =
    * meaningful on a 400-health tank and doesn't overheal a fragile one.
    */
   | { type: 'healPercent'; fraction: number }
-  | { type: 'status'; kind: StatusKind; stacks: number; duration: StatusDuration }
+  | {
+      type: 'status';
+      kind: StatusKind;
+      stacks: number;
+      duration: StatusDuration;
+      /**
+       * Odds of landing, rolled per target. Absent means it always lands.
+       *
+       * Rolled from the battle seed like every other roll, so a coin-flip Bleed
+       * replays the same way from the same seed.
+       */
+      chance?: number;
+    }
   | { type: 'draw'; count: number }
   /** Reduces the target's stamina directly. `'all'` empties the bar outright. */
   | { type: 'drainStamina'; amount: number | 'all' }
@@ -222,14 +247,22 @@ export type CardEffect =
        * Separate from `continueChance` because they answer different questions:
        * that one is how long the chain runs, this one is how far it spreads.
        * With nobody else standing the bolt stays put whatever this says, which
-       * is what keeps a chain into a lone enemy worth its energy.
+       * is what keeps a chain into a lone enemy worth its stamina.
        */
       redirectChance: number;
       /** Safety valve, not a design cap — see the engine. */
       maxHits: number;
     }
-  /** Restores stamina. Not damage, so Fatigue does not touch it. */
-  | { type: 'restoreStamina'; amount: number }
+  /** Restores stamina. Not damage, so Fatigue does not touch it. `'all'` fills the bar. */
+  | { type: 'restoreStamina'; amount: number | 'all' }
+  /**
+   * The Pyromancer's payoff: pulls every copy of one card out of the draw pile
+   * into the discard, and casts it once for each copy plus `extra`.
+   *
+   * The copies are cast, not played — no stamina, and nothing lands in hand. Hand and discard are left alone: only what is still waiting in the
+   * draw pile is spent.
+   */
+  | { type: 'castCopiesFromDrawPile'; cardId: CardDefId; extra: number }
   /**
    * Thane's shields, sized from the *caster's* max health rather than the
    * target's — his bulk is what he is handing out.
@@ -261,12 +294,11 @@ export type CardEffect =
     };
 
 /**
- * How many copies of a card a deck may hold.
+ * How many copies of a card a deck may hold: basics 4, everything else 2.
  *
- * Note that for a character with three cards these sum to exactly the
- * seven-card budget, so maxing every card *is* spending the whole budget.
- * Hollis is the exception: his four cards allow nine copies against a budget of
- * seven, so he is the only character who has to cut something.
+ * For a character with three cards that is eight copies against a seven-card
+ * budget, so every character has to cut something. Hollis and Marlo, with extra
+ * cards, have to cut more.
  */
 export type CardTier = 'basic' | 'special' | 'unique';
 
@@ -291,22 +323,27 @@ export interface CardDefinition {
   /**
    * The character who acts when this card is played, or `null` for a neutral
    * card — a team effect that isn't any one character acting. Neutral cards
-   * cost no stamina, but still need at least one character able to act.
+   * cost no stamina, but still need at least one character able to act, and
+   * are used up when played.
    */
   ownerId: CombatantId | null;
 
-  energyCost: number;
-  /** Ignored for neutral cards, which never spend stamina. */
+  /**
+   * What playing this costs its owner. The only cost a card has: there is no
+   * energy, so this is the whole of what stops a card being played. Ignored for
+   * neutral cards, which never spend stamina.
+   */
   staminaCost: number;
 
   target: TargetKind;
   effects: CardEffect[];
 
   /**
-   * Energy refunded if playing this card leaves any target's stamina at zero.
-   * Drives Overdraw's "if this empties a character's stamina, gain an energy".
+   * Stamina given back to the owner if playing this card leaves any target's
+   * stamina at zero, capped at what the card actually cost. Drives Overdraw's
+   * "free if it empties them".
    */
-  energyOnStaminaEmpty?: number;
+  staminaRefundOnEmpty?: number;
 
   /**
    * Fraction of the owner's max health spent to play this card.
@@ -339,11 +376,18 @@ export interface CardInstance {
  */
 export type EnemyEffect = Exclude<
   CardEffect,
-  { type: 'draw' | 'revealAndKeep' | 'discardThenDraw' | 'discardHandAndAttack' }
+  {
+    type:
+      | 'draw'
+      | 'revealAndKeep'
+      | 'discardThenDraw'
+      | 'discardHandAndAttack'
+      | 'castCopiesFromDrawPile';
+  }
 >;
 
 /**
- * Enemies don't hold decks or energy. Each turn they pick one action from a
+ * Enemies don't hold decks. Each turn they pick one action from a
  * weighted list. Intents are deliberately NOT telegraphed to the player.
  *
  * The move list itself is not an intent, though, and the UI shows it on demand:
@@ -446,13 +490,17 @@ export interface CombatState {
   round: number;
   activeTeam: Team;
 
-  energy: number;
-  maxEnergy: number;
-
   cards: Record<CardInstanceId, CardInstance>;
   drawPile: CardInstanceId[];
   hand: CardInstanceId[];
   discardPile: CardInstanceId[];
+  /**
+   * Cards used up for the rest of the battle — neutral cards, once played.
+   *
+   * Kept as a pile rather than dropped, so every card instance is still
+   * accounted for somewhere and the UI can say how many are gone.
+   */
+  exhaustPile: CardInstanceId[];
   handLimit: number;
 
   phase: CombatPhase;
@@ -511,4 +559,13 @@ export interface CombatContent {
    * to declare an empty bestiary to say so.
    */
   summonable?: Record<string, Combatant>;
+
+  /**
+   * How hard each archetype leans toward the party member it likes the look of,
+   * from 0 (an even roll) to 1 (the full lean). See `targetWeights`.
+   *
+   * Optional, and anything left out uses the default lean, so a test with one
+   * made-up enemy does not have to declare a personality for it.
+   */
+  enemyTargeting?: Record<string, { focus: number }>;
 }

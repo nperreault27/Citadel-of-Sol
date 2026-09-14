@@ -10,7 +10,8 @@
  *            mitigation.
  *   Defense  mitigation is 50/(50+DEF), so DEF 50 halves incoming damage.
  *   Stamina  100 baseline; a hit worth 25% of max health drains half the bar.
- *            At zero the character sits out the rest of the turn.
+ *            40% of the bar comes back as each turn opens. At zero the
+ *            character rests for a full turn and takes 50% more damage.
  *
  * Roles:
  *   DPS      removes enemy HP.
@@ -273,6 +274,55 @@ export const THANE: Combatant = {
   resting: false,
 };
 
+/**
+ * Ignis - The Pyromancer. Role: DPS. Trait: area damage.
+ *
+ * Hits everything a little rather than one thing hard. High Attack and Speed on
+ * the thinnest health bar in the roster, so a sweep that reaches the back line
+ * is a real threat. Fireball Barrage turns every Fireball still waiting in the
+ * draw pile into a volley, which makes a deck full of them the whole plan.
+ */
+export const IGNIS: Combatant = {
+  id: 'ignis',
+  name: 'Ignis',
+  team: 'player',
+  health: 145,
+  maxHealth: 145,
+  stamina: 100,
+  maxStamina: 100,
+  attack: 125,
+  defense: 32,
+  speed: 17,
+  statuses: [],
+  shield: 0,
+  downed: false,
+  resting: false,
+};
+
+/**
+ * Marlo - The Quartermaster. Role: Support. Trait: buffs and debuffs.
+ *
+ * Almost no damage. Hands out Strength and Defense Up for free, strips the
+ * enemy of both, and can refill the whole team's stamina. Two basics, like
+ * Hollis's four cards, so this is a character who has to cut the most.
+ */
+export const MARLO: Combatant = {
+  id: 'marlo',
+  name: 'Marlo',
+  team: 'player',
+  health: 220,
+  maxHealth: 220,
+  stamina: 110,
+  maxStamina: 110,
+  attack: 65,
+  defense: 45,
+  speed: 11,
+  statuses: [],
+  shield: 0,
+  downed: false,
+  resting: false,
+};
+
 /** Everyone available to equip. Three of these fight at a time. */
 export const ROSTER: Combatant[] = [
   IVY,
@@ -284,6 +334,8 @@ export const ROSTER: Combatant[] = [
   EMRYS,
   VESPER,
   THANE,
+  IGNIS,
+  MARLO,
 ];
 
 export const PARTY_SIZE = 3;
@@ -308,6 +360,8 @@ interface FoeStats {
   defense: number;
   speed: number;
   stamina: number;
+  /** See `Combatant.damageTakenWithAllies`. */
+  damageTakenWithAllies?: number;
 }
 
 /** An archetype, at full health with nothing on it. */
@@ -324,6 +378,9 @@ function foe(archetype: string, name: string, stats: FoeStats): Combatant {
     attack: stats.attack,
     defense: stats.defense,
     speed: stats.speed,
+    ...(stats.damageTakenWithAllies === undefined
+      ? {}
+      : { damageTakenWithAllies: stats.damageTakenWithAllies }),
     statuses: [],
     shield: 0,
     downed: false,
@@ -350,7 +407,7 @@ function squad(base: Combatant, count: number): Combatant[] {
 
 export const OGRE = foe('ogre', 'Ogre', {
   health: 400,
-  attack: 110,
+  attack: 132,
   defense: 40,
   speed: 6,
   stamina: 140,
@@ -358,7 +415,7 @@ export const OGRE = foe('ogre', 'Ogre', {
 
 export const IMP = foe('imp', 'Imp', {
   health: 120,
-  attack: 70,
+  attack: 84,
   defense: 15,
   speed: 9,
   stamina: 80,
@@ -367,7 +424,7 @@ export const IMP = foe('imp', 'Imp', {
 /** Fragile and fast, and there are always more of them than you want. */
 export const RATKIN = foe('ratkin', 'Ratkin', {
   health: 120,
-  attack: 72,
+  attack: 86,
   defense: 12,
   speed: 15,
   stamina: 70,
@@ -376,7 +433,7 @@ export const RATKIN = foe('ratkin', 'Ratkin', {
 /** Defense 72 is 41% damage taken. Raw power is the wrong tool. */
 export const BULWARK = foe('bulwark', 'Bulwark', {
   health: 420,
-  attack: 92,
+  attack: 110,
   defense: 72,
   speed: 3,
   stamina: 120,
@@ -385,7 +442,7 @@ export const BULWARK = foe('bulwark', 'Bulwark', {
 /** Soft, and makes the Bulwark worse every turn it is allowed to live. */
 export const ACOLYTE = foe('acolyte', 'Acolyte', {
   health: 100,
-  attack: 45,
+  attack: 54,
   defense: 10,
   speed: 11,
   stamina: 60,
@@ -394,7 +451,7 @@ export const ACOLYTE = foe('acolyte', 'Acolyte', {
 /** Cask's mechanic, pointed the other way. */
 export const SAPPER = foe('sapper', 'Sapper', {
   health: 250,
-  attack: 82,
+  attack: 98,
   defense: 25,
   speed: 12,
   stamina: 90,
@@ -402,72 +459,92 @@ export const SAPPER = foe('sapper', 'Sapper', {
 
 /** Hands out shields sized from its own modest bulk. Kill it first. */
 export const CANTOR = foe('cantor', 'Cantor', {
-  health: 160,
-  attack: 50,
-  defense: 30,
+  health: 176,
+  attack: 119,
+  defense: 50,
   speed: 10,
   stamina: 100,
 });
 
+/** Speed 12 puts the Choir ahead of slower parties, so they open under fire. */
 export const WARDEN = foe('warden', 'Warden', {
-  health: 230,
-  attack: 88,
-  defense: 40,
-  speed: 7,
+  health: 290,
+  attack: 208,
+  defense: 50,
+  speed: 12,
   stamina: 100,
 });
 
-/** Heals off your losses as well as its own hits. */
+/**
+ * Heals off your losses as well as its own hits. Speed 20 lets its team move
+ * first against all but the quickest parties.
+ */
 export const REVENANT = foe('revenant', 'Revenant', {
-  health: 360,
-  attack: 100,
-  defense: 35,
-  speed: 11,
+  health: 460,
+  attack: 270,
+  defense: 45,
+  speed: 20,
   stamina: 110,
 });
 
 export const GHOUL = foe('ghoul', 'Ghoul', {
-  health: 130,
-  attack: 65,
-  defense: 20,
+  health: 165,
+  attack: 175,
+  defense: 30,
   speed: 9,
   stamina: 70,
 });
 
 /** Punishes hitting often. One big blow costs far less than five small ones. */
 export const HEXWEAVER = foe('hexweaver', 'Hexweaver', {
-  health: 190,
-  attack: 72,
-  defense: 30,
+  health: 240,
+  attack: 195,
+  defense: 42,
   speed: 13,
   stamina: 85,
 });
 
-/** Alone on purpose: every "if only one enemy remains" payoff turns on here. */
+/**
+ * Alone on purpose: every "if only one enemy remains" payoff turns on here.
+ *
+ * Speed 50 is more than any party of three adds up to, so the Tyrant always
+ * swings first.
+ */
 export const TYRANT = foe('tyrant', 'Tyrant', {
-  health: 780,
-  attack: 125,
+  health: 897,
+  attack: 200,
   defense: 55,
-  speed: 8,
+  speed: 50,
   stamina: 160,
 });
 
 /**
- * Barely dangerous herself — Attack 55 and one weak swing. The brood does the
- * damage, which is what makes her the clock rather than the threat.
+ * The brood does most of the damage, which is what makes her the clock rather
+ * than the threat.
+ *
+ * Speed 50, like the Tyrant, so she always acts first. Her opening turn is the
+ * first brood being called, not free damage.
+ *
+ * Takes half damage from attacks while any of her brood stands. Ignoring the
+ * Chitterlings to race her down is slow as well as dangerous.
  */
 export const BROODMOTHER = foe('broodmother', 'Broodmother', {
   health: 620,
   attack: 55,
   defense: 60,
-  speed: 4,
+  speed: 50,
   stamina: 150,
+  damageTakenWithAllies: 0.5,
 });
 
-/** 40 health and Attack 95: dies to anything, ruins you if ignored. */
+/**
+ * 65 health and Attack 185: fragile, and ruins you if ignored. Enough health to
+ * live through one sweep, so a single area attack doesn't clear the brood before
+ * it acts.
+ */
 export const CHITTERLING = foe('chitterling', 'Chitterling', {
-  health: 40,
-  attack: 95,
+  health: 65,
+  attack: 185,
   defense: 5,
   speed: 16,
   stamina: 40,
@@ -500,6 +577,9 @@ export interface EnemyTeam {
  *
  * Every number here is a first pass, eyeballed against the original Ogre fight.
  * Run `npm run balance` after touching any of it.
+ *
+ * Difficulty leans on Attack over health: health adds rounds, and fights are
+ * meant to settle in about five unless the party is built to stall.
  */
 export const ENEMY_TEAMS: EnemyTeam[] = [
   {
@@ -566,7 +646,14 @@ export const ENEMY_TEAMS: EnemyTeam[] = [
     name: 'The Broodmother',
     tier: 3,
     pitch: 'Can you spend your turns on the right target?',
-    members: squad(BROODMOTHER, 1),
+    // She opens with a brood already out. Marked as hers, so they count toward
+    // her cap and leave with her exactly as a called-in brood would, but unlike
+    // one they are in the queue from the first turn: the early rounds are not
+    // free.
+    members: [
+      ...squad(BROODMOTHER, 1),
+      ...squad(CHITTERLING, 2).map((c) => ({ ...c, summonedBy: BROODMOTHER.id })),
+    ],
   },
 ];
 
@@ -607,7 +694,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal damage and apply 1 Poison.',
     brief: 'Damage and 1 Poison',
     ownerId: 'ivy',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [
@@ -622,8 +708,7 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Apply 2 Poison to all enemies.',
     brief: '2 Poison to all enemies',
     ownerId: 'ivy',
-    energyCost: 2,
-    staminaCost: 35,
+    staminaCost: 40,
     target: 'allEnemies',
     // No damage: the whole card is board-wide poison setup, which is what makes
     // Cascade worth holding for.
@@ -636,8 +721,7 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Apply 1 Poison to all enemies, then extend every Poison by 1 turn.',
     brief: 'Poison all, then extend it',
     ownerId: 'ivy',
-    energyCost: 2,
-    staminaCost: 30,
+    staminaCost: 40,
     target: 'allEnemies',
     // Order matters: the stack is applied first, so the extend catches it too
     // and it lands as a 3-turn poison rather than the 2 it was applied with.
@@ -652,15 +736,14 @@ const CARD_LIST: CardDefinition[] = [
     id: 'saber.sever',
     tier: 'basic',
     name: 'Sever',
-    description: 'Deal damage and apply 1 Bleed.',
-    brief: 'Damage and 1 Bleed',
+    description: 'Deal damage, with a 50% chance to apply 1 Bleed.',
+    brief: 'Damage, maybe Bleed',
     ownerId: 'saber',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [
       { type: 'damage', power: 57 },
-      { type: 'status', kind: 'bleed', stacks: 1, duration: PERMANENT },
+      { type: 'status', kind: 'bleed', stacks: 1, duration: PERMANENT, chance: 0.5 },
     ],
   },
   {
@@ -670,7 +753,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal damage to all enemies and apply 1 Bleed to each.',
     brief: 'Damage and Bleed all',
     ownerId: 'saber',
-    energyCost: 2,
     staminaCost: 40,
     target: 'allEnemies',
     effects: [
@@ -685,8 +767,7 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Discard your hand. Strike a random enemy for each card discarded.',
     brief: 'Dump your hand to strike',
     ownerId: 'saber',
-    energyCost: 3,
-    staminaCost: 30,
+    staminaCost: 60,
     target: 'none',
     // The generated strikes cost no extra stamina — the real price is the hand.
     effects: [{ type: 'discardHandAndAttack', power: 57, bleedStacks: 1 }],
@@ -700,7 +781,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal damage and drain 40 stamina.',
     brief: 'Damage and drain stamina',
     ownerId: 'cask',
-    energyCost: 1,
     staminaCost: 25,
     target: 'oneEnemy',
     effects: [
@@ -712,10 +792,9 @@ const CARD_LIST: CardDefinition[] = [
     id: 'cask.overdraw',
     tier: 'special',
     name: 'Overdraw',
-    description: 'Deals far more damage the more stamina the target is missing. Refunds 1 energy if it empties them.',
+    description: 'Deals far more damage the more stamina the target is missing. Free if it empties them.',
     brief: 'Hits the winded hardest',
     ownerId: 'cask',
-    energyCost: 1,
     staminaCost: 30,
     target: 'oneEnemy',
     effects: [
@@ -727,7 +806,8 @@ const CARD_LIST: CardDefinition[] = [
         scaling: { kind: 'missingStamina', bonusPower: 86, exponent: 2 },
       },
     ],
-    energyOnStaminaEmpty: 1,
+    // The whole cost back, so landing the empty makes the card free.
+    staminaRefundOnEmpty: 30,
   },
   {
     id: 'cask.winded',
@@ -736,8 +816,7 @@ const CARD_LIST: CardDefinition[] = [
     description: "Empty a target's stamina completely.",
     brief: 'Empty their stamina',
     ownerId: 'cask',
-    energyCost: 3,
-    staminaCost: 35,
+    staminaCost: 60,
     target: 'oneEnemy',
     // No damage at all — a guaranteed stolen turn is the whole card.
     effects: [{ type: 'drainStamina', amount: 'all' }],
@@ -751,9 +830,8 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Give one ally 1 Strength.',
     brief: 'Give an ally Strength',
     ownerId: 'lyra',
-    energyCost: 0,
-    // Free in energy, so stamina is the only thing rationing it — about four
-    // before Lyra benches herself.
+    // Cheap enough to throw several a turn — four uses most of what Lyra
+    // regenerates, which is what rations it.
     staminaCost: 10,
     target: 'oneAlly',
     effects: [{ type: 'status', kind: 'strength', stacks: 1, duration: PERMANENT }],
@@ -765,7 +843,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Apply 1 Fatigue to one enemy.',
     brief: '1 Fatigue to one enemy',
     ownerId: 'lyra',
-    energyCost: 1,
     staminaCost: 25,
     target: 'oneEnemy',
     effects: [{ type: 'status', kind: 'fatigue', stacks: 1, duration: UNTIL_REST }],
@@ -777,8 +854,7 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Apply 1 Fatigue to all enemies — or 3 if only one remains.',
     brief: 'Fatigue every enemy',
     ownerId: 'lyra',
-    energyCost: 2,
-    staminaCost: 35,
+    staminaCost: 40,
     target: 'allEnemies',
     effects: [
       {
@@ -799,7 +875,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal damage to one enemy.',
     brief: 'Damage one enemy',
     ownerId: 'bruno',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 55 }],
@@ -811,7 +886,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal heavy damage to one enemy.',
     brief: 'Heavy damage',
     ownerId: 'bruno',
-    energyCost: 2,
     staminaCost: 50,
     target: 'oneEnemy',
     // 2.5x a Jab.
@@ -824,7 +898,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal enormous damage. Bruno is spent for the rest of the turn.',
     brief: 'Huge damage, then spent',
     ownerId: 'bruno',
-    energyCost: 3,
     // Exactly his max stamina, so throwing this always benches him — that
     // guaranteed cost is what the 5x is paying for.
     staminaCost: 100,
@@ -840,7 +913,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal damage to one enemy.',
     brief: 'Damage one enemy',
     ownerId: 'hollis',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     // Counter Attack fires at this same power — see COUNTER_ATTACK_POWER.
@@ -850,13 +922,18 @@ const CARD_LIST: CardDefinition[] = [
     id: 'hollis.goad',
     tier: 'special',
     name: 'Goad',
-    description: 'Taunt +1. Single-target attacks must hit Hollis. Area attacks ignore it.',
-    brief: 'Pull attacks onto Hollis',
+    description:
+      'Taunt +1 and 1 Defense Up. Every attack on the team hits Hollis instead, area attacks included.',
+    brief: 'Pull every attack onto Hollis',
     ownerId: 'hollis',
-    energyCost: 1,
     staminaCost: 20,
     target: 'self',
-    effects: [{ type: 'status', kind: 'taunt', stacks: 1, duration: PER_TURN_STACK }],
+    // An area attack lands on Hollis once for every ally it would have hit, so
+    // the Defense Up is what lets him stand under a sweep aimed at three people.
+    effects: [
+      { type: 'status', kind: 'taunt', stacks: 1, duration: PER_TURN_STACK },
+      { type: 'status', kind: 'defenseUp', stacks: 1, duration: PERMANENT },
+    ],
   },
   {
     id: 'hollis.rebound',
@@ -865,7 +942,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Gain 3 Counter Attack. Each spends a stack to strike back when attacked.',
     brief: 'Strike back when hit',
     ownerId: 'hollis',
-    energyCost: 1,
     staminaCost: 25,
     target: 'self',
     effects: [{ type: 'status', kind: 'counter', stacks: 3, duration: PERMANENT }],
@@ -877,7 +953,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Take no damage until your next turn. Buffs and debuffs still apply.',
     brief: 'Take no damage',
     ownerId: 'hollis',
-    energyCost: 3,
     staminaCost: 40,
     target: 'self',
     effects: [{ type: 'status', kind: 'immunity', stacks: 1, duration: UNTIL_NEXT_TURN }],
@@ -891,7 +966,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal damage to one enemy.',
     brief: 'Damage one enemy',
     ownerId: 'emrys',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 63 }],
@@ -903,8 +977,7 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Strike an enemy, then keep arcing — usually onward — while the lightning holds.',
     brief: 'Lightning chains enemies',
     ownerId: 'emrys',
-    energyCost: 2,
-    staminaCost: 35,
+    staminaCost: 40,
     target: 'oneEnemy',
     effects: [
       {
@@ -931,8 +1004,7 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Restore 40 stamina to an ally. Puts an exhausted ally back on their feet.',
     brief: "Restore an ally's stamina",
     ownerId: 'emrys',
-    energyCost: 1,
-    staminaCost: 15,
+    staminaCost: 20,
     target: 'oneAlly',
     effects: [{ type: 'restoreStamina', amount: 40 }],
   },
@@ -945,7 +1017,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Pay 15% of your max health to strike hard.',
     brief: 'Spend health to hit hard',
     ownerId: 'vesper',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     healthCostFraction: 0.15,
@@ -958,7 +1029,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Deal damage and heal for half of it.',
     brief: 'Damage and heal half',
     ownerId: 'vesper',
-    energyCost: 1,
     staminaCost: 20,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 69, lifesteal: 0.5 }],
@@ -970,8 +1040,7 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Gain 1 Undying. When an enemy falls, heal 50%, or rise if you are down.',
     brief: 'Heal or rise on a kill',
     ownerId: 'vesper',
-    energyCost: 2,
-    staminaCost: 30,
+    staminaCost: 40,
     target: 'self',
     effects: [{ type: 'status', kind: 'undying', stacks: 1, duration: PERMANENT }],
   },
@@ -984,7 +1053,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Shield an ally for 25% of your own max health.',
     brief: 'Shield an ally',
     ownerId: 'thane',
-    energyCost: 1,
     staminaCost: 25,
     target: 'oneAlly',
     effects: [{ type: 'shield', fractionOfSourceMaxHealth: 0.25 }],
@@ -996,7 +1064,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Shield the whole team, splitting 45% of your max health between them.',
     brief: 'Shield the whole team',
     ownerId: 'thane',
-    energyCost: 2,
     staminaCost: 40,
     target: 'allAllies',
     effects: [{ type: 'shield', fractionOfSourceMaxHealth: 0.45, split: true }],
@@ -1008,13 +1075,111 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Give one ally 1 Defense Up.',
     brief: 'Give an ally Defense Up',
     ownerId: 'thane',
-    energyCost: 0,
     staminaCost: 10,
     target: 'oneAlly',
     effects: [{ type: 'status', kind: 'defenseUp', stacks: 1, duration: PERMANENT }],
   },
 
-  // ══ Neutral — no owner, no stamina, but the team must be able to act ══
+  // == Ignis - area damage ==
+  {
+    id: 'ignis.fireball',
+    tier: 'basic',
+    name: 'Fireball',
+    description: 'Deal damage to all enemies.',
+    brief: 'Damage all enemies',
+    ownerId: 'ignis',
+    staminaCost: 20,
+    target: 'allEnemies',
+    // Barrage casts this at the same power, so it is tuned for both at once.
+    effects: [{ type: 'damage', power: 30 }],
+  },
+  {
+    id: 'ignis.firebolt',
+    tier: 'special',
+    name: 'Firebolt',
+    description: 'Deal heavy damage to one enemy.',
+    brief: 'Heavy damage',
+    ownerId: 'ignis',
+    staminaCost: 25,
+    target: 'oneEnemy',
+    effects: [{ type: 'damage', power: 72 }],
+  },
+  {
+    id: 'ignis.barrage',
+    tier: 'unique',
+    name: 'Fireball Barrage',
+    description:
+      'Draws and cast every Fireball left in the draw pile, plus one additional copy.',
+    brief: 'Cast every Fireball in the deck',
+    ownerId: 'ignis',
+    staminaCost: 60,
+    target: 'allEnemies',
+    // The casts cost nothing further — the price is the Fireballs you will not
+    // draw until the next reshuffle.
+    effects: [{ type: 'castCopiesFromDrawPile', cardId: 'ignis.fireball', extra: 1 }],
+  },
+
+  // == Marlo - buffs and debuffs ==
+  {
+    id: 'marlo.rally',
+    tier: 'basic',
+    name: 'Rally',
+    description: 'Give one ally 1 Strength.',
+    brief: 'Give an ally Strength',
+    ownerId: 'marlo',
+    staminaCost: 10,
+    target: 'oneAlly',
+    effects: [{ type: 'status', kind: 'strength', stacks: 1, duration: PERMANENT }],
+  },
+  {
+    id: 'marlo.fortify',
+    tier: 'basic',
+    name: 'Fortify',
+    description: 'Give one ally 1 Defense Up.',
+    brief: 'Give an ally Defense Up',
+    ownerId: 'marlo',
+    staminaCost: 10,
+    target: 'oneAlly',
+    effects: [{ type: 'status', kind: 'defenseUp', stacks: 1, duration: PERMANENT }],
+  },
+  {
+    id: 'marlo.demoralize',
+    tier: 'special',
+    name: 'Demoralize',
+    description: 'Apply 1 Weakness to all enemies.',
+    brief: 'Weaken every enemy',
+    ownerId: 'marlo',
+    staminaCost: 40,
+    target: 'allEnemies',
+    effects: [{ type: 'status', kind: 'weakness', stacks: 1, duration: PERMANENT }],
+  },
+  {
+    id: 'marlo.expose',
+    tier: 'special',
+    name: 'Expose',
+    description: 'Apply 1 Defense Down to all enemies.',
+    brief: "Lower every enemy's Defense",
+    ownerId: 'marlo',
+    staminaCost: 40,
+    target: 'allEnemies',
+    effects: [{ type: 'status', kind: 'defenseDown', stacks: 1, duration: PERMANENT }],
+  },
+  {
+    id: 'marlo.resupply',
+    tier: 'unique',
+    name: 'Resupply',
+    description: 'Restore all stamina to the whole team. Puts exhausted allies back on their feet.',
+    brief: "Refill the team's stamina",
+    ownerId: 'marlo',
+    // Priced as the heaviest thing Marlo does: waking every exhausted ally at
+    // once is the strongest tempo swing in the game.
+    staminaCost: 60,
+    target: 'allAllies',
+    // Marlo is on the team, so the cost is paid and then refunded in full.
+    effects: [{ type: 'restoreStamina', amount: 'all' }],
+  },
+
+  // ══ Neutral — no owner, no stamina, one use, but the team must be able to act ══
   {
     id: 'team.regroup',
     tier: 'basic',
@@ -1022,7 +1187,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Draw 2 cards.',
     brief: 'Draw 2 cards',
     ownerId: null,
-    energyCost: 1,
     staminaCost: 0,
     target: 'none',
     effects: [{ type: 'draw', count: 2 }],
@@ -1034,7 +1198,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Look at the top 3 cards. Keep one, discard the rest.',
     brief: 'Keep one of the top 3',
     ownerId: null,
-    energyCost: 0,
     staminaCost: 0,
     target: 'none',
     effects: [{ type: 'revealAndKeep', look: 3 }],
@@ -1046,7 +1209,6 @@ const CARD_LIST: CardDefinition[] = [
     description: 'Discard a card, then draw 2.',
     brief: 'Discard 1, draw 2',
     ownerId: null,
-    energyCost: 1,
     staminaCost: 0,
     target: 'none',
     effects: [{ type: 'discardThenDraw', draw: 2 }],
@@ -1058,7 +1220,6 @@ const CARD_LIST: CardDefinition[] = [
     description: "Restore 15% of an ally's max health. Revives a downed ally.",
     brief: 'Heal or revive an ally',
     ownerId: null,
-    energyCost: 1,
     staminaCost: 0,
     target: 'oneAlly',
     effects: [{ type: 'healPercent', fraction: 0.15 }],
@@ -1475,11 +1636,11 @@ const BROODMOTHER_ACTIONS: EnemyAction[] = [
   {
     id: 'broodmother.spawn',
     name: 'Spawn Brood',
-    description: 'Call in 2 Chitterlings. They act from next turn.',
+    description: 'Call in 3 Chitterlings. They act from next turn.',
     weight: 2,
     // Summoning reads the summoner, not a target — see the effect's own note.
     target: 'none',
-    effects: [{ type: 'summon', archetype: 'chitterling', count: 2, max: BROOD_CAP }],
+    effects: [{ type: 'summon', archetype: 'chitterling', count: 3, max: BROOD_CAP }],
   },
   {
     id: 'broodmother.shriek',
@@ -1492,10 +1653,10 @@ const BROODMOTHER_ACTIONS: EnemyAction[] = [
   {
     id: 'broodmother.lash',
     name: 'Lash',
-    description: 'Deal light damage to one of your party.',
+    description: 'Deal damage to one of your party.',
     weight: 1,
     target: 'oneEnemy',
-    effects: [{ type: 'damage', power: 57 }],
+    effects: [{ type: 'damage', power: 90 }],
   },
 ];
 
@@ -1511,8 +1672,27 @@ const CHITTERLING_ACTIONS: EnemyAction[] = [
   },
 ];
 
+/**
+ * How hard each archetype leans toward the party member it likes, 0 to 1.
+ *
+ * The lean itself (sturdy, resting, badly hurt) is the same for everyone and
+ * lives in `targetWeights`. This is only how much each kind of enemy cares.
+ * Brutes swing at whoever is in front of them; scavengers go for the weak spot.
+ * Anything not listed uses `DEFAULT_TARGET_FOCUS`.
+ */
+const ENEMY_TARGETING: Record<string, { focus: number }> = {
+  ogre: { focus: 0.2 },
+  bulwark: { focus: 0.2 },
+  tyrant: { focus: 0.2 },
+  ratkin: { focus: 0.9 },
+  chitterling: { focus: 0.9 },
+  ghoul: { focus: 0.9 },
+  revenant: { focus: 0.9 },
+};
+
 export const COMBAT_CONTENT: CombatContent = {
   cardDefs: CARD_DEFS,
+  enemyTargeting: ENEMY_TARGETING,
   summonable: {
     chitterling: CHITTERLING,
   },

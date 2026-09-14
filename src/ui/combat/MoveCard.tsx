@@ -14,8 +14,9 @@ interface Props {
  * An enemy's move is the same kind of object as a player's card — a name, what
  * it does, and what it costs — so it is worth the same frame, and the player
  * reads both the same way. The economics differ, which is the whole reason this
- * doesn't just render a `CardFace`: an enemy spends no energy and holds no
- * deck, so the corner that prices a player card has nothing to say here.
+ * doesn't just render a `CardFace`: an enemy holds no deck and pays for its
+ * moves out of a stamina cost the sheet prints elsewhere, so the corner that
+ * prices a player card has nothing to say here.
  *
  * What goes there instead is how often the move comes up. That is the thing a
  * player actually wants off this screen — an Ogre that sweeps one turn in four

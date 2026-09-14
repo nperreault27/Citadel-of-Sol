@@ -51,7 +51,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 2,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [
@@ -65,7 +64,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 2,
     staminaCost: 10,
     target: 'oneEnemy',
     // Never continues, so the chain is exactly one hit.
@@ -80,7 +78,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 2,
     staminaCost: 10,
     target: 'oneEnemy',
     // Always continues, so only maxHits or a lack of targets can stop it.
@@ -97,7 +94,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 2,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [
@@ -111,7 +107,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 2,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [
@@ -125,7 +120,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 1,
     staminaCost: 5,
     target: 'oneAlly',
     effects: [{ type: 'restoreStamina', amount: 40 }],
@@ -137,7 +131,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     healthCostFraction: 0.15,
@@ -150,7 +143,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 60, lifesteal: 0.5 }],
@@ -162,7 +154,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'caster',
-    energyCost: 2,
     staminaCost: 10,
     target: 'self',
     effects: [{ type: 'status', kind: 'undying', stacks: 1, duration: PERMANENT }],
@@ -174,7 +165,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'ally',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 500 }],
@@ -277,8 +267,8 @@ describe('chain damage', () => {
 
   it('keeps striking a lone enemy rather than fizzling', () => {
     // The chain may re-hit the enemy it just struck, so a single target is a
-    // fine place to cast it — otherwise the card would be one hit for two
-    // energy exactly when you are finishing someone off.
+    // fine place to cast it — otherwise the card would be one hit for its
+    // stamina exactly when you are finishing someone off.
     const { state, content } = battle({
       combatants: [unit(), foe({ id: 'a' })],
       deck: Array.from({ length: 12 }, () => 'arcAlways'),
@@ -385,7 +375,7 @@ describe('restoreStamina', () => {
 
   it('puts an exhausted ally back on their feet', () => {
     // A deliberate exception to "must rest for a turn" — it is what the card is
-    // worth an energy for.
+    // worth its stamina for.
     const { state, content } = battle({
       combatants: [unit(), unit({ id: 'ally', stamina: 0, resting: true }), foe()],
       deck: Array.from({ length: 12 }, () => 'reserve'),

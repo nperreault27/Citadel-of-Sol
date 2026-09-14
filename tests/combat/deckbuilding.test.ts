@@ -33,7 +33,6 @@ function card(
     description: '',
     brief: '',
     ownerId,
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 10 }],
@@ -94,8 +93,8 @@ describe('availableCards', () => {
 // ── Copy limits ─────────────────────────────────────────────────────────────
 
 describe('copy limits', () => {
-  it('caps each tier at 4, 2 and 1', () => {
-    expect(COPY_LIMITS).toEqual({ basic: 4, special: 2, unique: 1 });
+  it('caps basics at 4 and everything else at 2', () => {
+    expect(COPY_LIMITS).toEqual({ basic: 4, special: 2, unique: 2 });
   });
 
   it('stops a basic at four copies', () => {
@@ -105,13 +104,13 @@ describe('copy limits', () => {
     expect(canAddCopy(DEFS, deck, PARTY, 'a.basic').ok).toBe(false);
   });
 
-  it('stops a special at two and a unique at one', () => {
+  it('stops a special and a unique at two', () => {
     expect(fill({}, 'a.special')['a.special']).toBe(2);
-    expect(fill({}, 'a.unique')['a.unique']).toBe(1);
+    expect(fill({}, 'a.unique')['a.unique']).toBe(2);
   });
 
   it('says which limit was hit', () => {
-    const check = canAddCopy(DEFS, { 'a.unique': 1 }, PARTY, 'a.unique');
+    const check = canAddCopy(DEFS, { 'a.unique': 2 }, PARTY, 'a.unique');
 
     expect(check.ok).toBe(false);
     expect(check.reason).toContain('unique');
@@ -141,16 +140,19 @@ describe('copy limits', () => {
 // ── Per-character budget ────────────────────────────────────────────────────
 
 describe('the seven-card budget', () => {
-  it('is exactly reachable by maxing a three-card character', () => {
-    // 4 + 2 + 1 is precisely the budget, so there is no internal choice.
+  it('forces even a three-card character to cut something', () => {
+    // 4 + 2 + 2 is eight against a budget of seven, so filling in order runs
+    // out one copy into the unique.
     let deck: DeckList = {};
     for (const id of ['a.basic', 'a.special', 'a.unique']) deck = fill(deck, id);
 
     expect(countForCharacter(DEFS, deck, 'a')).toBe(CARDS_PER_CHARACTER);
+    expect(deck['a.unique']).toBe(1);
+    expect(canAddCopy(DEFS, deck, PARTY, 'a.unique').blockedBy).toBe('characterBudget');
   });
 
-  it('forces a four-card character to cut something', () => {
-    // c can reach nine copies against a budget of seven — the Hollis case.
+  it('forces a four-card character to cut more', () => {
+    // c can reach ten copies against a budget of seven — the Hollis case.
     let deck: DeckList = {};
     for (const id of ['c.basic', 'c.special1', 'c.special2', 'c.unique']) deck = fill(deck, id);
 
@@ -160,7 +162,7 @@ describe('the seven-card budget', () => {
       (deck['c.basic'] ?? 0) === 4 &&
       (deck['c.special1'] ?? 0) === 2 &&
       (deck['c.special2'] ?? 0) === 2 &&
-      (deck['c.unique'] ?? 0) === 1;
+      (deck['c.unique'] ?? 0) === 2;
     expect(maxedOut).toBe(false);
   });
 
@@ -229,7 +231,7 @@ describe('validateDeck', () => {
     const result = validateDeck(DEFS, deck, PARTY);
 
     expect(result.ok).toBe(false);
-    expect(result.problems.join(' ')).toContain('limit 1');
+    expect(result.problems.join(' ')).toContain('limit 2');
   });
 
   it('rejects a card belonging to a benched character', () => {
@@ -317,8 +319,23 @@ describe('the real roster', () => {
     expect(countForCharacter(CARD_DEFS, deck, 'hollis')).toBe(CARDS_PER_CHARACTER);
   });
 
+  it('fills uniques, then specials, then basics with what is left', () => {
+    const deck = defaultDeckFor(CARD_DEFS, ['ivy']);
+    expect(deck['ivy.cascade']).toBe(2);
+    expect(deck['ivy.disperse']).toBe(2);
+    expect(deck['ivy.inject']).toBe(3);
+  });
+
+  it('cuts Hollis down to one Strike rather than losing a signature card', () => {
+    const deck = defaultDeckFor(CARD_DEFS, ['hollis']);
+    expect(deck['hollis.ironclad']).toBe(2);
+    expect(deck['hollis.goad']).toBe(2);
+    expect(deck['hollis.rebound']).toBe(2);
+    expect(deck['hollis.strike']).toBe(1);
+  });
+
   it('gives every character a card set that respects their own limits', () => {
-    for (const characterId of ['ivy', 'saber', 'cask', 'lyra', 'bruno', 'hollis', 'emrys', 'vesper', 'thane']) {
+    for (const characterId of ['ivy', 'saber', 'cask', 'lyra', 'bruno', 'hollis', 'emrys', 'vesper', 'thane', 'ignis', 'marlo']) {
       const deck = defaultDeckFor(CARD_DEFS, [characterId]);
 
       for (const [cardId, count] of Object.entries(deck)) {

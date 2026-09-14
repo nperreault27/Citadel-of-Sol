@@ -65,7 +65,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'status', kind: 'poison', stacks: 1, duration: POISON_2 }],
@@ -77,7 +76,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'allEnemies',
     // Stack first, then extend — so the new stack is extended too.
@@ -93,7 +91,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [
@@ -108,7 +105,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'damage', power: 50 }],
@@ -120,7 +116,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'allEnemies',
     effects: [{ type: 'damage', power: 50 }],
@@ -132,7 +127,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'drainStamina', amount: 40 }],
@@ -144,7 +138,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [{ type: 'drainStamina', amount: 'all' }],
@@ -156,13 +149,12 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'oneEnemy',
     effects: [
       { type: 'damage', power: 35, scaling: { kind: 'missingStamina', bonusPower: 75, exponent: 2 } },
     ],
-    energyOnStaminaEmpty: 1,
+    staminaRefundOnEmpty: 10,
   },
   exsanguinate: {
     id: 'exsanguinate',
@@ -171,7 +163,6 @@ const CARDS: Record<string, CardDefinition> = {
     description: '',
     brief: '',
     ownerId: 'hero',
-    energyCost: 1,
     staminaCost: 10,
     target: 'none',
     effects: [{ type: 'discardHandAndAttack', power: 50, bleedStacks: 1 }],
@@ -592,7 +583,7 @@ describe('overdraw scaling', () => {
     expect(wornDamage).toBe(110);
   });
 
-  it('refunds energy when it empties the target', () => {
+  it('refunds its stamina when it empties the target', () => {
     const { state, content } = battle({
       // Low stamina and low max health, so the damage-drain finishes the bar.
       combatants: [hero(), foe({ stamina: 5, maxStamina: 100 })],
@@ -602,8 +593,8 @@ describe('overdraw scaling', () => {
     const after = play(state, content, 'overdraw', 'foe');
 
     expect(after.combatants['foe']?.stamina).toBe(0);
-    // 5 energy, minus 1 for the card, plus the 1 refund.
-    expect(after.energy).toBe(5);
+    // 100, minus 10 for the card, plus the 10 back.
+    expect(after.combatants['hero']?.stamina).toBe(100);
   });
 
   it('gives no refund when the target was already empty', () => {
@@ -613,7 +604,20 @@ describe('overdraw scaling', () => {
     });
 
     const after = play(state, content, 'overdraw', 'foe');
-    expect(after.energy).toBe(4);
+    expect(after.combatants['hero']?.stamina).toBe(90);
+  });
+
+  it('never refunds more than the card actually cost', () => {
+    // Played on a sliver: 4 is all that could be paid, so 4 is all that comes
+    // back, and the overspend still wakes them rather than turning a profit.
+    const { state, content } = battle({
+      combatants: [hero({ stamina: 4 }), foe({ stamina: 5, maxStamina: 100 })],
+      deck: Array.from({ length: 12 }, () => 'overdraw'),
+    });
+
+    const after = play(state, content, 'overdraw', 'foe');
+    expect(after.combatants['hero']?.stamina).toBe(4);
+    expect(after.combatants['hero']?.resting).toBe(false);
   });
 });
 

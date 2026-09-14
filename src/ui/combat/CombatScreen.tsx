@@ -159,7 +159,7 @@ function PartyRow({ battle, tip, onToggleTip }: RowProps) {
   );
 }
 
-// ── Hand, energy and turn controls ──────────────────────────────────────────
+// ── Hand and turn controls ──────────────────────────────────────────────────
 
 function BottomBar({ battle }: { battle: CombatState }) {
   const discardSelection = useCombatStore((s) => s.discardSelection);
@@ -178,16 +178,11 @@ function BottomBar({ battle }: { battle: CombatState }) {
   return (
     <div className="combat__bottom">
       <div className="combat__status">
-        <span className="energy" aria-label={`${battle.energy} of ${battle.maxEnergy} energy`}>
-          {Array.from({ length: battle.maxEnergy }, (_, i) => (
-            <span key={i} className={i < battle.energy ? 'energy__pip energy__pip--full' : 'energy__pip'} />
-          ))}
-        </span>
-
         <span className="combat__round">Round {battle.round}</span>
 
         <span className="combat__piles">
           {battle.drawPile.length} draw · {battle.discardPile.length} discard
+          {battle.exhaustPile.length > 0 && ` · ${battle.exhaustPile.length} used`}
         </span>
       </div>
 

@@ -28,7 +28,7 @@ export const POISON_TICK_FRACTION = 0.04;
 export const POISON_DURATION_TURNS = 2;
 
 /** Multiplier applied to an attack that consumes a Bleed stack. */
-export const BLEED_MULTIPLIER = 1.5;
+export const BLEED_MULTIPLIER = 2;
 
 /**
  * Multiplier applied to an attack on a resting character.
@@ -37,7 +37,18 @@ export const BLEED_MULTIPLIER = 1.5;
  * being hit harder as well, so draining a character to zero is worth more than
  * the tempo it buys. It is what makes Cask's whole plan pay.
  */
-export const RESTING_DAMAGE_MULTIPLIER = 1.2;
+export const RESTING_DAMAGE_MULTIPLIER = 1.5;
+
+/**
+ * Fraction of max stamina a standing combatant gets back as their team's turn
+ * opens.
+ *
+ * Stamina is the only thing rationing what anyone does, so this is the pace of
+ * the whole game: spend more than this a turn and you are running down, spend
+ * less and you are banking. Resting characters get nothing from it — they are
+ * refilled in full when they wake instead.
+ */
+export const STAMINA_REGEN_FRACTION = 0.4;
 
 /**
  * Each Fatigue stack multiplies stamina loss by this, compounding.
@@ -63,8 +74,7 @@ export const UNDYING_HEAL_FRACTION = 0.5;
 /**
  * What one non-damage effect on an enemy action costs, priced as attack power.
  *
- * Enemies have no energy and no deck, so stamina is the only thing rationing
- * what they do. Pricing support at zero — which is what happened when the cost
+ * Enemies have no deck, so stamina is the only thing rationing what they do. Pricing support at zero — which is what happened when the cost
  * counted damage alone — let a shielder or a curse-thrower act every turn
  * forever, and so made it immune to Cask and Lyra by accident.
  *
@@ -92,6 +102,37 @@ export const STAMINA_DRAIN_PIVOT = 0.25;
 
 /** Stamina drained, as a fraction of max stamina, at or above the pivot. */
 export const STAMINA_DRAIN_CAP = 0.5;
+
+/**
+ * Enemy targeting. A single-target enemy move is still a roll, but not an even
+ * one: the sturdier-looking party member draws more of them, and so does anyone
+ * caught resting or already badly hurt.
+ *
+ * Sturdiness is max health over mitigation, relative to the party's average and
+ * clamped to this band, so Hollis draws about twice what Emrys does and no more.
+ */
+export const TARGET_STURDINESS_MIN = 0.7;
+export const TARGET_STURDINESS_MAX = 1.4;
+
+/** Weight multiplier on a resting target. */
+export const RESTING_TARGET_WEIGHT = 1.5;
+
+/** Weight multiplier on a target below `WOUNDED_TARGET_THRESHOLD` of max health. */
+export const WOUNDED_TARGET_WEIGHT = 1.25;
+export const WOUNDED_TARGET_THRESHOLD = 0.5;
+
+/** How far an archetype with no stated preference leans, 0 to 1. */
+export const DEFAULT_TARGET_FOCUS = 0.5;
+
+/**
+ * The most any one target's share may be, as a multiple of an even share.
+ *
+ * At 1.5 that is half the hits against a full party of three, and three in four
+ * against two. The lean should make a bad spot worse, never turn it into a
+ * certainty: an enemy that always finds the resting character reads as the game
+ * cheating rather than the enemy being clever.
+ */
+export const TARGET_SHARE_CAP = 1.5;
 
 // ── Statuses → effective stats ──────────────────────────────────────────────
 
@@ -140,9 +181,12 @@ export function stackMultiplier(netStacks: number): number {
  * DEF 65 to 84.5 moves mitigation from 0.435 to 0.372, about 14% less damage.
  */
 export function effectiveDefense(combatant: Combatant): number {
+  // Defense Down is the mirror of Defense Up exactly as Weakness is of
+  // Strength: the two net out to one signed count before any multiplier.
   let stacks = 0;
   for (const entry of combatant.statuses) {
     if (entry.kind === 'defenseUp') stacks += entry.stacks;
+    else if (entry.kind === 'defenseDown') stacks -= entry.stacks;
   }
   return stacks === 0 ? combatant.defense : combatant.defense * stackMultiplier(stacks);
 }

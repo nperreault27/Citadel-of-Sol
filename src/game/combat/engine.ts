@@ -39,11 +39,21 @@ import {
   computeDamage,
   fatigueMultiplier,
   decideFirstTeam,
+  effectiveDefense,
   missingStaminaBonus,
+  mitigation,
   COUNTER_ATTACK_POWER,
+  DEFAULT_TARGET_FOCUS,
   ENEMY_POWER_PER_STAMINA,
+  RESTING_TARGET_WEIGHT,
+  STAMINA_REGEN_FRACTION,
   SUPPORT_EFFECT_POWER,
+  TARGET_SHARE_CAP,
+  TARGET_STURDINESS_MAX,
+  TARGET_STURDINESS_MIN,
   UNDYING_HEAL_FRACTION,
+  WOUNDED_TARGET_THRESHOLD,
+  WOUNDED_TARGET_WEIGHT,
   poisonTickDamage,
   staminaDrainFromDamage,
 } from './stats';
@@ -62,7 +72,6 @@ import type {
   Team,
 } from './types';
 
-export const DEFAULT_MAX_ENERGY = 5;
 export const DEFAULT_HAND_LIMIT = 5;
 
 // ── Cloning ─────────────────────────────────────────────────────────────────
@@ -88,6 +97,7 @@ function cloneState(state: CombatState): CombatState {
     drawPile: [...state.drawPile],
     hand: [...state.hand],
     discardPile: [...state.discardPile],
+    exhaustPile: [...state.exhaustPile],
     cards: { ...state.cards },
     enemyQueue: [...state.enemyQueue],
     selection: state.selection
@@ -171,25 +181,49 @@ function allCombatants(state: CombatState): Combatant[] {
 }
 
 /**
- * Redirects a single-target attack to a taunting defender.
- *
- * Only redirects attacks — a card that merely debuffs is not "an attack", so
- * Taunt draws blows rather than curses. Area attacks bypass it entirely, which
- * is the counterplay: spread damage ignores the wall.
+ * The defender currently drawing attacks for their team, if any.
  *
  * With two defenders taunting, the one holding more stacks takes it; ties go to
  * whoever appears first in team order, so the choice is at least deterministic.
+ */
+function taunterOf(state: CombatState, defendingTeam: Team): CombatantId | null {
+  const taunters = teamMembers(state, defendingTeam)
+    .filter((c) => !c.downed && stacksOf(c.statuses, 'taunt') > 0)
+    .sort((a, b) => stacksOf(b.statuses, 'taunt') - stacksOf(a.statuses, 'taunt'));
+
+  return taunters[0]?.id ?? null;
+}
+
+/**
+ * Redirects a single-target attack to a taunting defender.
+ *
+ * Only redirects attacks — a card that merely debuffs is not "an attack", so
+ * Taunt draws blows rather than curses.
  */
 function redirectForTaunt(
   state: CombatState,
   defendingTeam: Team,
   chosen: CombatantId
 ): CombatantId {
-  const taunters = teamMembers(state, defendingTeam)
-    .filter((c) => !c.downed && stacksOf(c.statuses, 'taunt') > 0)
-    .sort((a, b) => stacksOf(b.statuses, 'taunt') - stacksOf(a.statuses, 'taunt'));
+  return taunterOf(state, defendingTeam) ?? chosen;
+}
 
-  return taunters[0]?.id ?? chosen;
+/**
+ * Redirects an area attack onto a taunting defender.
+ *
+ * The taunter takes every hit the area would have dealt — one per target it
+ * was going to strike, their own included — so a sweep across three allies is
+ * three blows on the wall and none on anyone behind it. Anything riding on the
+ * attack lands on the taunter the same number of times, because it is the same
+ * blow landing.
+ */
+function redirectAreaForTaunt(
+  state: CombatState,
+  defendingTeam: Team,
+  targets: CombatantId[]
+): CombatantId[] {
+  const taunter = taunterOf(state, defendingTeam);
+  return taunter === null ? targets : targets.map(() => taunter);
 }
 
 /** Whether a set of effects actually constitutes an attack. */
@@ -218,12 +252,11 @@ export interface CreateCombatOptions {
   /** Card definition ids making up the shared draw pile, before shuffling. */
   deck: string[];
   seed?: number;
-  maxEnergy?: number;
   handLimit?: number;
 }
 
 export function createCombat(options: CreateCombatOptions): CombatState {
-  const { combatants, deck, seed = 1, maxEnergy = DEFAULT_MAX_ENERGY } = options;
+  const { combatants, deck, seed = 1 } = options;
   const handLimit = options.handLimit ?? DEFAULT_HAND_LIMIT;
 
   const combatantMap: Record<CombatantId, Combatant> = {};
@@ -253,12 +286,11 @@ export function createCombat(options: CreateCombatOptions): CombatState {
     enemyOrder,
     round: 1,
     activeTeam: first,
-    energy: maxEnergy,
-    maxEnergy,
     cards,
     drawPile,
     hand: [],
     discardPile: [],
+    exhaustPile: [],
     handLimit,
     phase: first === 'player' ? 'selectCard' : 'enemyTurn',
     pendingCard: null,
@@ -362,7 +394,6 @@ export function canPlayCard(
   const def = cardDefOf(state, content, instanceId);
   if (!def) return { ok: false, reason: 'Unknown card' };
   if (!state.hand.includes(instanceId)) return { ok: false, reason: 'Card is not in hand' };
-  if (state.energy < def.energyCost) return { ok: false, reason: 'Not enough energy' };
 
   if (def.ownerId === null) {
     const anyReady = teamMembers(state, 'player').some(canAct);
@@ -402,10 +433,12 @@ function resolveTargets(
       return teamMembers(state, 'player')
         .filter((c) => !c.downed || effectsHeal(def.effects))
         .map((c) => c.id);
-    case 'allEnemies':
-      return teamMembers(state, 'enemy')
+    case 'allEnemies': {
+      const living = teamMembers(state, 'enemy')
         .filter((c) => !c.downed)
         .map((c) => c.id);
+      return effectsAttack(def.effects) ? redirectAreaForTaunt(state, 'enemy', living) : living;
+    }
     case 'none':
       return [];
   }
@@ -444,6 +477,12 @@ function dealDamage(
     damage = Math.max(1, Math.round(damage * BLEED_MULTIPLIER));
   }
 
+  // Guarded while its side still stands. Applied to the final figure, after
+  // Bleed, so it reads as a flat cut to whatever would have landed.
+  if (target.damageTakenWithAllies !== undefined && hasStandingAlly(state, target)) {
+    damage = Math.max(1, Math.round(damage * target.damageTakenWithAllies));
+  }
+
   const immune = isImmune(target.statuses);
 
   emit(state, {
@@ -471,6 +510,13 @@ function dealDamage(
   if (!isCounter && !target.downed) fireCounter(state, target, attacker);
 
   return immune ? 0 : damage;
+}
+
+/** Whether anyone else on this combatant's side is still up. */
+function hasStandingAlly(state: CombatState, combatant: Combatant): boolean {
+  return teamMembers(state, combatant.team).some(
+    (other) => other.id !== combatant.id && !other.downed
+  );
 }
 
 /** Hits the attacker back with a basic attack, spending one Counter stack. */
@@ -602,6 +648,24 @@ function applyStaminaCost(state: CombatState, combatant: Combatant, cost: number
   return before - combatant.stamina;
 }
 
+/**
+ * Gives stamina back, waking the character if they were resting.
+ *
+ * Getting stamina back puts an exhausted character straight back into the
+ * fight — a deliberate exception to "must rest for a turn", and what makes
+ * Reserve and Resupply worth their cost. Returns whether they were woken.
+ */
+function restoreStamina(combatant: Combatant, amount: number): boolean {
+  combatant.stamina = Math.min(combatant.maxStamina, combatant.stamina + amount);
+
+  if (combatant.stamina > 0 && combatant.resting) {
+    combatant.resting = false;
+    combatant.restingSinceTurnStart = false;
+    return true;
+  }
+  return false;
+}
+
 function applyEffects(
   state: CombatState,
   content: CombatContent,
@@ -670,8 +734,8 @@ function applyEffects(
           // of the time it takes one — but can double back, and with nobody
           // else standing it stays where it is rather than fizzling. That is
           // what keeps the chain worth casting into a single target: otherwise
-          // a lone enemy has nowhere to jump and the card is one hit for two
-          // energy exactly when you are finishing someone off.
+          // a lone enemy has nowhere to jump and the card is one hit for its
+          // stamina exactly when you are finishing someone off.
           //
           // One weighted draw either way, so the number of rolls a chain spends
           // does not depend on how many enemies are left — two casts from the
@@ -734,17 +798,12 @@ function applyEffects(
           const target = state.combatants[id];
           if (!target || target.downed) continue;
 
-          target.stamina = Math.min(target.maxStamina, target.stamina + effect.amount);
+          const amount = effect.amount === 'all' ? target.maxStamina : effect.amount;
 
-          // Getting stamina back puts an exhausted character straight back into
-          // the fight — a deliberate exception to "must rest for a turn", and
-          // the reason the card is worth an energy.
-          if (target.stamina > 0 && target.resting) {
-            target.resting = false;
-            target.restingSinceTurnStart = false;
+          if (restoreStamina(target, amount)) {
             log(state, `${target.name} finds a second wind.`);
           } else {
-            log(state, `${target.name} recovers ${effect.amount} stamina.`);
+            log(state, `${target.name} recovers ${amount} stamina.`);
           }
         }
         break;
@@ -789,6 +848,10 @@ function applyEffects(
         for (const id of living) {
           const target = state.combatants[id];
           if (!target) continue;
+          if (effect.kind === 'poison' && target.poisonImmune) {
+            log(state, `${target.name} is immune to poison.`);
+            continue;
+          }
 
           target.statuses = applyStatus(target.statuses, effect.kind, stacks, effect.duration);
           emit(state, { type: 'status', targetId: id, kind: effect.kind, stacks });
@@ -917,6 +980,41 @@ function applyEffects(
         break;
       }
 
+      case 'castCopiesFromDrawPile': {
+        const cast = content.cardDefs[effect.cardId];
+        if (!cast) {
+          console.warn(`[combat] castCopiesFromDrawPile names unknown card ${effect.cardId}; skipped`);
+          break;
+        }
+
+        // Pulled out of the draw pile before anything is cast, so the count is
+        // fixed up front and a cast that draws cannot change it.
+        const copies = state.drawPile.filter(
+          (id) => state.cards[id]?.definitionId === effect.cardId
+        );
+        const pulled = new Set(copies);
+        state.drawPile = state.drawPile.filter((id) => !pulled.has(id));
+        state.discardPile = [...state.discardPile, ...copies];
+
+        const casts = copies.length + effect.extra;
+        log(state, `${cast.name} is cast ${casts} time${casts === 1 ? '' : 's'}.`);
+
+        // A cast never casts again, whatever the card it names says.
+        const castEffects = cast.effects.filter((e) => e.type !== 'castCopiesFromDrawPile');
+
+        for (let i = 0; i < casts; i++) {
+          // Retargeted every cast, so a fireball that kills someone does not
+          // leave the next one aimed at a body.
+          const targets = needsTargetChoice(cast.target)
+            ? targetIds.filter((id) => state.combatants[id]?.downed === false)
+            : resolveTargets(state, cast, null);
+          if (targets.length === 0 && cast.target !== 'none') break;
+
+          applyEffects(state, content, castEffects, sourceId ?? cast.ownerId, targets);
+        }
+        break;
+      }
+
       case 'summon': {
         // Targets nothing — a summoner calls to its own side, so the source is
         // the only input this needs.
@@ -929,6 +1027,19 @@ function applyEffects(
         for (const id of targetIds) {
           const target = state.combatants[id];
           if (!target || target.downed) continue;
+
+          if (effect.chance !== undefined && effect.chance < 1) {
+            const roll = nextRandom(state.seed);
+            state.seed = roll.seed;
+            if (roll.value >= effect.chance) continue;
+          }
+
+          // After the roll, so an immune target consumes the same randomness a
+          // vulnerable one would and replays stay in step.
+          if (effect.kind === 'poison' && target.poisonImmune) {
+            log(state, `${target.name} is immune to poison.`);
+            continue;
+          }
 
           target.statuses = applyStatus(
             target.statuses,
@@ -1137,13 +1248,13 @@ export function resolveCard(
   if (!def) return state;
 
   const next = cloneState(state);
-  next.energy -= def.energyCost;
+  let staminaPaid = 0;
 
   if (def.ownerId) {
     const owner = next.combatants[def.ownerId];
     if (owner) {
       log(next, `${owner.name} plays ${def.name}.`);
-      applyStaminaCost(next, owner, def.staminaCost);
+      staminaPaid = applyStaminaCost(next, owner, def.staminaCost);
 
       // A cost, not damage: no stamina drain, no Bleed spent, no counter, and
       // never lethal — paying always leaves at least a sliver.
@@ -1160,25 +1271,36 @@ export function resolveCard(
   // The card leaves the hand before its effects run, so a draw effect can't
   // pull the card that is currently resolving back into hand — and Saber's
   // discard-everything effect sees exactly the cards being given up.
-  withPiles(next, discardFromHand(pilesOf(next), instanceId));
+  //
+  // A neutral card costs no stamina, so nothing would stop it being played
+  // every time it came round. Instead it is used up: it goes to the exhaust
+  // pile and stays there for the rest of the battle.
+  if (def.ownerId === null) {
+    next.hand = next.hand.filter((id) => id !== instanceId);
+    next.exhaustPile.push(instanceId);
+  } else {
+    withPiles(next, discardFromHand(pilesOf(next), instanceId));
+  }
 
   const affected = resolveTargets(next, def, targetId);
   const staminaBefore = new Map(affected.map((id) => [id, next.combatants[id]?.stamina ?? 0]));
 
   applyEffects(next, content, def.effects, def.ownerId, affected);
 
-  // Overdraw's refund: pays back energy if the card left anyone empty. Checked
-  // against the before-state so a target who was already at zero doesn't
-  // hand out free energy every turn.
-  const refund = def.energyOnStaminaEmpty ?? 0;
-  if (refund > 0) {
+  // Overdraw's refund: gives the owner back stamina if the card left anyone
+  // empty. Checked against the before-state so a target who was already at
+  // zero doesn't make the card free every turn, and capped at what was paid so
+  // an overspend on a sliver cannot come back as a profit.
+  const refund = Math.min(def.staminaRefundOnEmpty ?? 0, staminaPaid);
+  const owner = def.ownerId ? next.combatants[def.ownerId] : undefined;
+  if (refund > 0 && owner && !owner.downed) {
     const emptied = affected.some((id) => {
       const before = staminaBefore.get(id) ?? 0;
       return before > 0 && next.combatants[id]?.stamina === 0;
     });
     if (emptied) {
-      next.energy += refund;
-      log(next, `${def.name} refunds ${refund} energy.`);
+      restoreStamina(owner, refund);
+      log(next, `${def.name} refunds ${refund} stamina.`);
     }
   }
 
@@ -1232,15 +1354,24 @@ export function resolveSelection(
 // ── Turn transitions ────────────────────────────────────────────────────────
 
 /**
- * Start-of-turn upkeep: clears statuses that last until this team acts again.
+ * Start-of-turn upkeep: clears statuses that last until this team acts again,
+ * and hands this team its stamina for the turn.
  *
  * Immunity is applied on your own turn, so it has to survive your end-of-turn
  * tick to cover the enemy turn. Expiring it here — as your next turn opens —
  * gives exactly one enemy turn of protection.
+ *
+ * Regeneration skips anyone resting: they are refilled in full when they wake,
+ * so topping them up here would change nothing but when the bar moves. Both
+ * sides regenerate the same way, each as its own turn opens.
  */
 function runTurnStart(state: CombatState, team: Team): void {
   for (const combatant of teamMembers(state, team)) {
     combatant.statuses = consumeOnTurnStart(combatant.statuses);
+
+    if (!combatant.downed && !combatant.resting) {
+      restoreStamina(combatant, Math.round(combatant.maxStamina * STAMINA_REGEN_FRACTION));
+    }
   }
 
   markRestsForTurn(state);
@@ -1299,7 +1430,7 @@ function runStatusUpkeep(state: CombatState): void {
     // both of the turns it is alive rather than being cut short on the second.
     // Immunity blocks poison too — it is damage, and without this Ivy would
     // walk straight through the strongest defensive card in the game.
-    if (!combatant.downed && !isImmune(combatant.statuses)) {
+    if (!combatant.downed && !combatant.poisonImmune && !isImmune(combatant.statuses)) {
       const stacks = stacksOf(combatant.statuses, 'poison');
       if (stacks > 0) {
         const damage = poisonTickDamage(stacks, combatant.maxHealth);
@@ -1394,7 +1525,7 @@ function beginEnemyTurn(state: CombatState): CombatState {
 /**
  * Resolves exactly one enemy's action and returns.
  *
- * Enemies have no deck and no energy — each picks one action from a weighted
+ * Enemies have no deck — each picks one action from a weighted
  * list. Intents are deliberately not telegraphed, so nothing is published for
  * the UI to read ahead of time. They do have stamina and can be staggered by
  * heavy hits exactly as the player's characters can.
@@ -1429,7 +1560,13 @@ export function stepEnemyTurn(state: CombatState, content: CombatContent): Comba
       log(next, `${enemy.name} uses ${action.name}.`);
 
       applyStaminaCost(next, enemy, enemyStaminaCost(action));
-      applyEffects(next, content, action.effects, enemyId, enemyTargets(next, action, enemyId));
+      applyEffects(
+        next,
+        content,
+        action.effects,
+        enemyId,
+        enemyTargets(next, content, action, enemyId)
+      );
     }
   }
 
@@ -1452,7 +1589,6 @@ function finishEnemyTurn(state: CombatState): CombatState {
   state.round += 1;
   state.activeTeam = 'player';
   state.phase = 'selectCard';
-  state.energy = state.maxEnergy;
   state.enemyQueue = [];
   runTurnStart(state, 'player');
 
@@ -1550,19 +1686,108 @@ function enemyTargetPool(
   }
 }
 
+/**
+ * Each target's share of a single-target enemy move, in order, summing to 1.
+ *
+ * Three things raise a share: looking sturdy (max health over mitigation,
+ * against the group's average, clamped), resting, and being badly hurt. The
+ * first means the tank really does draw fire without a Taunt; the other two mean
+ * a bad spot gets worse. `focus` scales the whole lean, from 0 (an even roll) to
+ * 1, which is what lets a Ratkin hunt while an Ogre swings at whoever is there.
+ *
+ * Capped at `TARGET_SHARE_CAP` times an even share, so however bad a spot is it
+ * is never a certainty. Pure, and rolls nothing: the caller still makes exactly
+ * one roll per pick, so replays match however the weights come out.
+ */
+export function targetWeights(targets: readonly Combatant[], focus: number): number[] {
+  if (targets.length === 0) return [];
+
+  const lean = Math.min(1, Math.max(0, focus));
+  const sturdiness = targets.map((c) => c.maxHealth / mitigation(effectiveDefense(c)));
+  const mean = sturdiness.reduce((sum, value) => sum + value, 0) / targets.length;
+
+  const weights = targets.map((target, index) => {
+    const relative = mean > 0 ? (sturdiness[index] ?? mean) / mean : 1;
+    let weight = Math.min(TARGET_STURDINESS_MAX, Math.max(TARGET_STURDINESS_MIN, relative));
+    if (target.resting) weight *= RESTING_TARGET_WEIGHT;
+    if (target.health < target.maxHealth * WOUNDED_TARGET_THRESHOLD) {
+      weight *= WOUNDED_TARGET_WEIGHT;
+    }
+    return 1 + (weight - 1) * lean;
+  });
+
+  return capShares(weights, Math.min(1, TARGET_SHARE_CAP / targets.length));
+}
+
+/**
+ * Normalises weights to shares, then pins any share above `cap` and hands the
+ * excess to the rest in proportion. That can lift someone else over, so it
+ * repeats — at most once per entry, since each pass pins at least one.
+ */
+function capShares(weights: readonly number[], cap: number): number[] {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  if (total <= 0) return weights.map(() => 1 / weights.length);
+
+  const shares = weights.map((weight) => weight / total);
+  const pinned = shares.map(() => false);
+
+  for (let pass = 0; pass < shares.length; pass++) {
+    let excess = 0;
+    shares.forEach((share, index) => {
+      if (!pinned[index] && share > cap + 1e-12) {
+        excess += share - cap;
+        shares[index] = cap;
+        pinned[index] = true;
+      }
+    });
+    if (excess <= 0) break;
+
+    const free = shares.reduce((sum, share, index) => (pinned[index] ? sum : sum + share), 0);
+    if (free <= 0) break;
+
+    shares.forEach((share, index) => {
+      if (!pinned[index]) shares[index] = share + excess * (share / free);
+    });
+  }
+
+  return shares;
+}
+
+/** How hard this enemy leans, by archetype, falling back to the default. */
+function targetingFocus(state: CombatState, content: CombatContent, enemyId: CombatantId): number {
+  const key = state.combatants[enemyId]?.archetype ?? enemyId;
+  return content.enemyTargeting?.[key]?.focus ?? DEFAULT_TARGET_FOCUS;
+}
+
 /** Resolves the pool down to actual targets, rolling only for single-target. */
 function enemyTargets(
   state: CombatState,
+  content: CombatContent,
   action: EnemyAction,
   enemyId: CombatantId
 ): CombatantId[] {
   const pool = enemyTargetPool(state, action, enemyId);
 
+  if (action.target === 'allEnemies' && effectsAttack(action.effects)) {
+    return redirectAreaForTaunt(state, 'player', pool);
+  }
+
   if (action.target !== 'oneEnemy' && action.target !== 'oneAlly') return pool;
-  if (pool.length === 0) return [];
+
+  const targets = pool
+    .map((id) => state.combatants[id])
+    .filter((c): c is Combatant => c !== undefined);
+  if (targets.length === 0) return [];
+
+  // Aimed at the party, the roll leans toward whoever looks worth hitting.
+  // Aimed at its own side it stays even: support has nobody to read.
+  const weights =
+    action.target === 'oneEnemy'
+      ? targetWeights(targets, targetingFocus(state, content, enemyId))
+      : targets.map(() => 1);
 
   const pick = weightedPick(
-    pool.map((id) => ({ id, weight: 1 })),
+    targets.map((target, index) => ({ id: target.id, weight: weights[index] ?? 0 })),
     state.seed
   );
   state.seed = pick.seed;
